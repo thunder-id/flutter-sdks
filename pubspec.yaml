@@ -1,0 +1,29 @@
+name: thunderid_flutter
+description: Flutter SDK for ThunderID identity management. Bridges to native iOS and Android SDKs via platform channels.
+version: 0.0.1
+homepage: https://thunderid.dev
+
+environment:
+  sdk: ">=3.2.0 <4.0.0"
+  flutter: ">=3.16.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  plugin_platform_interface: ^2.1.7
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  mockito: ^5.4.4
+  build_runner: ^2.4.8
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: dev.thunderid.flutter
+        pluginClass: ThunderIDFlutterPlugin
+      ios:
+        pluginClass: ThunderIDFlutterPlugin
