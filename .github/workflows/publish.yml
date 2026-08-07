@@ -1,0 +1,17 @@
+# Publishes to pub.dev whenever a version tag is pushed (by release.yml, or manually).
+# Must be triggered by a tag push — pub.dev's trusted-publishing OIDC check rejects any
+# other ref type (e.g. workflow_dispatch on a branch), per
+# https://dart.dev/tools/pub/automated-publishing.
+
+name: 📦 Publish to pub.dev
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+' # tag pattern configured on pub.dev: 'v{{version}}'
+
+jobs:
+  publish:
+    permissions:
+      id-token: write # Required for authentication using OIDC
+    uses: dart-lang/setup-dart/.github/workflows/publish.yml@65eb853c7ba17dde3be364c3d2858773e7144260 # v1

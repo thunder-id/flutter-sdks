@@ -23,8 +23,6 @@ on:
 
 permissions:
   contents: write
-  # IMPORTANT: DO NOT REMOVE. `id-token` is required for OIDC trusted publishing to pub.dev.
-  id-token: write
 
 env:
   RELEASE_GIT_USER_NAME: "thunderid[bot]"
@@ -121,12 +119,6 @@ jobs:
           done
           git tag "v${{ steps.bump.outputs.version }}"
           git push origin "v${{ steps.bump.outputs.version }}"
-
-      - name: 🎯 Set up Dart SDK (provisions pub.dev OIDC credentials)
-        uses: dart-lang/setup-dart@65eb853c7ba17dde3be364c3d2858773e7144260 # v1.7.2
-
-      - name: 📦 Publish to pub.dev
-        run: flutter pub publish --force
 
       - name: 🚀 Create GitHub Release
         env:
