@@ -1,6 +1,6 @@
 name: thunderid_flutter
 description: Flutter SDK for ThunderID identity management. Bridges to native iOS and Android SDKs via platform channels.
-version: 0.1.0
+version: 0.0.1
 homepage: https://thunderid.dev
 repository: https://github.com/thunder-id/flutter-sdks
 issue_tracker: https://github.com/thunder-id/flutter-sdks/issues
@@ -33,3 +33,4 @@ flutter:
   assets:
     - assets/logo-icons/anonymous/
     - assets/logo-icons/entity/
+    - assets/provider-icons/
