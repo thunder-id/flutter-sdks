@@ -8,7 +8,7 @@ let package = Package(
         .library(name: "thunderid-flutter", targets: ["thunderid_flutter"])
     ],
     dependencies: [
-        .package(url: "https://github.com/thunder-id/ios-sdks.git", .upToNextMinor(from: "1.0.0"))
+        .package(url: "https://github.com/thunder-id/ios-sdks.git", .upToNextMinor(from: "1.0.2"))
     ],
     targets: [
         .target(

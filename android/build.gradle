@@ -62,7 +62,7 @@ def flutterEngineVersion = new File(flutterSdkPath(), 'bin/cache/engine.stamp').
 
 dependencies {
     compileOnly "io.flutter:flutter_embedding_debug:1.0.0-$flutterEngineVersion"
-    implementation 'com.github.thunder-id:android-sdks:v1.0.0'
+    implementation 'com.github.thunder-id:android-sdks:v1.0.2'
     implementation 'com.google.android.play:integrity:1.6.0'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
 }
