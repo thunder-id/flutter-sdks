@@ -1,0 +1,6 @@
+# Maestro workspace configuration for the Flutter Quickstart E2E suite.
+#
+# Only the top-level flows are test entry points. Without this, `maestro test .maestro/` would
+# also recurse into subflows/ and run the shared building blocks as if they were tests.
+flows:
+  - "*.yaml"

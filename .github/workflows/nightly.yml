@@ -1,0 +1,43 @@
+# Runs the Quickstart E2E suite against the latest published ThunderID release, every night.
+#
+# The PR builder runs the same suite through the same composite action. The nightly exists
+# because these flows talk to a freshly downloaded server release, so a scheduled run catches
+# breakage introduced by a new server release rather than by a change in this repository.
+#
+# Uses:
+#   OS: macos-latest
+
+name: 🌙 Nightly E2E
+
+on:
+  schedule:
+    # 02:30 UTC.
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+    inputs:
+      thunderid-version:
+        description: ThunderID release to test against, without the leading "v". Blank uses the latest.
+        required: false
+        default: ""
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PRODUCT_NAME: "ThunderID"
+
+jobs:
+  e2e:
+    name: 🎭 E2E Tests
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: 🔬 Run E2E Suite
+        uses: ./.github/actions/run-e2e-suite
+        with:
+          thunderid-version: ${{ inputs.thunderid-version }}
+          artifact-suffix: -nightly

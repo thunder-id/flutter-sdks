@@ -1,0 +1,91 @@
+appId: dev.thunderid.Quickstart
+name: Sign up a new user, then sign in as them
+tags:
+  - auth
+env:
+  E2E_PASSWORD: TestPassword@123
+---
+- launchApp:
+    clearState: true
+- runFlow: subflows/ensure-signed-out.yaml
+
+# Registration has to claim a username that does not exist yet, so each run generates its own.
+# This leaves a user behind on the target server per run, which is fine for a disposable CI
+# instance; against a long-lived dev server, expect the accounts to accumulate.
+- evalScript: ${output.username = 'e2e_signup_' + Date.now()}
+
+- tapOn: "Get started"
+
+# The registration step is server-rendered like the sign-in step, but its flow definition uses
+# different action refs, so the submit button id differs from signin.yaml.
+- extendedWaitUntil:
+    visible:
+      id: "thunderid-field-username"
+    timeout: 20000
+
+- tapOn:
+    id: "thunderid-field-username"
+- inputText: ${output.username}
+
+- tapOn:
+    id: "thunderid-field-password"
+- inputText: ${E2E_PASSWORD}
+
+- tapOn:
+    id: "thunderid-action-action_credentials"
+
+- runFlow: subflows/dismiss-save-password.yaml
+
+# Registration is multi-step: the credentials step is followed by a step collecting the
+# attributes the user schema requires (email here). Each step is a fresh server-rendered view
+# with its own action ref.
+- extendedWaitUntil:
+    visible:
+      id: "thunderid-field-email"
+    timeout: 20000
+
+- tapOn:
+    id: "thunderid-field-email"
+- inputText: ${output.username}@example.com
+
+- tapOn:
+    id: "thunderid-action-action_schema_attrs"
+
+# Registration completes without issuing an assertion, so the user is created but NOT signed in
+# and the app falls back to the landing screen. Signing in with the credentials just registered
+# is what proves the account is actually usable.
+- extendedWaitUntil:
+    visible: "Get started"
+    timeout: 30000
+
+- tapOn: "Sign in"
+- extendedWaitUntil:
+    visible:
+      id: "thunderid-field-username"
+    timeout: 20000
+
+- tapOn:
+    id: "thunderid-field-username"
+- inputText: ${output.username}
+
+- tapOn:
+    id: "thunderid-field-password"
+- inputText: ${E2E_PASSWORD}
+
+- tapOn:
+    id: "thunderid-action-action_001"
+
+- runFlow: subflows/dismiss-save-password.yaml
+
+- extendedWaitUntil:
+    visible: "Session active"
+    timeout: 30000
+
+- scrollUntilVisible:
+    element: "Sign out"
+    direction: DOWN
+    timeout: 20000
+- tapOn: "Sign out"
+- extendedWaitUntil:
+    visible: "Get started"
+    timeout: 20000

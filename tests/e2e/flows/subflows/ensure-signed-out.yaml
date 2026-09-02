@@ -1,0 +1,26 @@
+appId: dev.thunderid.Quickstart
+---
+# Bring the app to the unauthenticated landing screen, whatever state it starts in.
+#
+# The SDK persists tokens in the Keychain, which is outside the app container and therefore
+# survives both `clearState: true` and an app reinstall. A previous flow can consequently leave
+# the app authenticated, so an explicit sign-out is the only reliable way to get back to a known
+# starting point on a device that is not freshly created.
+- runFlow:
+    when:
+      visible: "Session active"
+    commands:
+      - scrollUntilVisible:
+          element: "Sign out"
+          direction: DOWN
+          timeout: 20000
+      - tapOn: "Sign out"
+      - extendedWaitUntil:
+          visible: "Get started"
+          timeout: 20000
+
+# A bare assertVisible relies on Maestro's short default lookup timeout, which is not always
+# enough for the landing screen to render on a loaded CI emulator/simulator - wait explicitly.
+- extendedWaitUntil:
+    visible: "Sign in"
+    timeout: 20000

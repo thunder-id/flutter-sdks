@@ -1,0 +1,34 @@
+---
+resource_type: application
+# Application used exclusively by the Flutter Quickstart E2E suite. It has no OAuth profile: the
+# mobile SDKs authenticate app-natively via the Flow Execution API, so the sample app needs only
+# the base URL and this application ID.
+#
+# The ID is fixed so the sample's Config.plist and the Maestro flows can be committed against a
+# known value instead of discovering it at run time.
+id: 019e5b10-1001-7a2b-9c3d-4e5f60718293
+ouHandle: default
+name: Mobile Quickstart E2E App
+description: Application for the ThunderID mobile SDK quickstart E2E suites
+type: mobile
+# A mobile application must normally prove its binary identity via platform attestation before it
+# may initiate a flow directly, otherwise /flow/execute fails with FES-1016. Apple App Attest is
+# unavailable in the iOS Simulator and Play Integrity requires real Play Services, so neither can
+# be satisfied on the emulated devices this suite drives. devMode skips that check.
+#
+# Test-only. Never enable this on a real tenant: it removes the guarantee that the client
+# initiating a flow is the genuine, unmodified app.
+#
+# NOTE: POST /import currently drops this block silently (it reports success, then stores
+# attestation: null), so run-e2e.sh re-applies it over PUT /applications/{id}. Once the
+# import path preserves it, that extra step can go.
+attestation:
+  devMode: true
+authFlowHandle: default-flow
+# The suite registers a fresh user through the UI rather than relying on a seeded account, so
+# self-service registration has to be enabled for this application.
+registrationFlowHandle: default-flow
+isRegistrationFlowEnabled: true
+signOutFlowHandle: default-flow
+allowedUserTypes:
+  - Person

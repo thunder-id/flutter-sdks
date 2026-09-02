@@ -6,8 +6,10 @@ repository: https://github.com/thunder-id/flutter-sdks
 issue_tracker: https://github.com/thunder-id/flutter-sdks/issues
 
 environment:
-  sdk: ">=3.2.0 <4.0.0"
-  flutter: ">=3.16.0"
+  # Semantics.identifier, used to expose flow field/action identifiers to the platform
+  # accessibility tree, was added in Flutter 3.19 (Dart 3.3).
+  sdk: ">=3.3.0 <4.0.0"
+  flutter: ">=3.19.0"
 
 dependencies:
   flutter:

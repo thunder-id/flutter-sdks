@@ -1,0 +1,49 @@
+appId: dev.thunderid.Quickstart
+name: Sign in and sign out
+tags:
+  - auth
+env:
+  E2E_USERNAME: e2e_mobile_user
+  E2E_PASSWORD: TestPassword@123
+---
+- launchApp:
+    clearState: true
+- runFlow: subflows/ensure-signed-out.yaml
+
+- tapOn: "Sign in"
+
+# The credentials step is rendered from the flow definition the server returns, not from static
+# native views. The SDK tags each input with the field's identifier and each button with the
+# action's ref, so these ids track the server's flow response.
+- extendedWaitUntil:
+    visible:
+      id: "thunderid-field-username"
+    timeout: 20000
+
+- tapOn:
+    id: "thunderid-field-username"
+- inputText: ${E2E_USERNAME}
+
+- tapOn:
+    id: "thunderid-field-password"
+- inputText: ${E2E_PASSWORD}
+
+- tapOn:
+    id: "thunderid-action-action_001"
+
+- runFlow: subflows/dismiss-save-password.yaml
+
+# Authenticated state.
+- extendedWaitUntil:
+    visible: "Session active"
+    timeout: 30000
+
+# ...and back out again, so the flow leaves the app as it found it.
+- scrollUntilVisible:
+    element: "Sign out"
+    direction: DOWN
+    timeout: 20000
+- tapOn: "Sign out"
+- extendedWaitUntil:
+    visible: "Get started"
+    timeout: 20000

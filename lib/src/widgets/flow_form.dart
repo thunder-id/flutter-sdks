@@ -387,20 +387,28 @@ class _FlowFormState extends State<FlowForm> {
     final label = _resolve(comp['label'], fallback: _capitalize(ref));
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
-      child: TextField(
-        key: Key('thunderid-field-$ref'),
-        controller: _controllers[ref],
-        decoration: InputDecoration(
-          labelText: label,
-          hintText: _resolve(comp['placeholder'], fallback: _capitalize(ref)),
-          floatingLabelBehavior: FloatingLabelBehavior.always,
-          border: const OutlineInputBorder(),
+      // A widget Key is internal to the Flutter tree and never reaches the platform
+      // accessibility tree, so it cannot be targeted by anything driving the app from outside
+      // (UI Automator, XCUITest, and black-box runners such as Maestro). Semantics.identifier
+      // is what maps to resource-id on Android and accessibilityIdentifier on iOS. The Key is
+      // kept as well so widget tests can keep finding these fields by key.
+      child: Semantics(
+        identifier: 'thunderid-field-${_fieldTestId(comp)}',
+        child: TextField(
+          key: Key('thunderid-field-$ref'),
+          controller: _controllers[ref],
+          decoration: InputDecoration(
+            labelText: label,
+            hintText: _resolve(comp['placeholder'], fallback: _capitalize(ref)),
+            floatingLabelBehavior: FloatingLabelBehavior.always,
+            border: const OutlineInputBorder(),
+          ),
+          obscureText: isPassword,
+          keyboardType: isPassword
+              ? TextInputType.visiblePassword
+              : TextInputType.emailAddress,
+          autocorrect: false,
         ),
-        obscureText: isPassword,
-        keyboardType: isPassword
-            ? TextInputType.visiblePassword
-            : TextInputType.emailAddress,
-        autocorrect: false,
       ),
     );
   }
@@ -491,21 +499,26 @@ class _FlowFormState extends State<FlowForm> {
 
     return Padding(
       padding: const EdgeInsets.only(top: 8),
-      child: FilledButton(
-        key: Key('thunderid-action-$actionId'),
-        onPressed: widget.isLoading
-            ? null
-            : () => widget.submit(
-                  actionId,
-                  _controllers.map((k, v) => MapEntry(k, v.text)),
-                ),
-        child: isSpinning
-            ? const SizedBox(
-                height: 20,
-                width: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : Text(label),
+      // See the note on the field above: the Key alone is invisible outside the Flutter tree,
+      // so the identifier is what an external driver can actually target.
+      child: Semantics(
+        identifier: 'thunderid-action-$actionId',
+        child: FilledButton(
+          key: Key('thunderid-action-$actionId'),
+          onPressed: widget.isLoading
+              ? null
+              : () => widget.submit(
+                    actionId,
+                    _controllers.map((k, v) => MapEntry(k, v.text)),
+                  ),
+          child: isSpinning
+              ? const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Text(label),
+        ),
       ),
     );
   }
@@ -611,6 +624,17 @@ class _FlowFormState extends State<FlowForm> {
           comp['identifier'],
           fallback: _str(comp['name'], fallback: _str(comp['id'])),
         ),
+      );
+
+  /// The value used to build a field's accessibility identifier.
+  ///
+  /// Deliberately different from [_fieldRef], which prefers `ref` because that is the key the
+  /// flow submission is built from. The iOS and Android SDKs tag their fields with the server's
+  /// `identifier` instead (`thunderid-field-username`, not `thunderid-field-input_001`), so
+  /// preferring `identifier` here keeps one set of selectors working across all three platforms.
+  String _fieldTestId(Map<String, dynamic> comp) => _str(
+        comp['identifier'],
+        fallback: _str(comp['name'], fallback: _fieldRef(comp)),
       );
 
   String _inputRef(Map<String, dynamic> input) => _str(

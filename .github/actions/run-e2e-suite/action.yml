@@ -1,0 +1,64 @@
+# Runs the Quickstart E2E suite: a ThunderID server, the provisioned test application and user,
+# the sample built onto a simulator, and the Maestro flows driving it.
+#
+# Shared by the PR builder and the nightly workflow so the two cannot drift. All of the actual
+# work lives in tests/e2e/run-e2e.sh, which is also what a contributor runs locally, so a green
+# run here and a green run on a laptop mean the same thing.
+#
+# These flows run on iOS: the sample's iOS target carries an NSAllowsArbitraryLoads exemption so
+# it accepts the server's self-signed certificate, while its Android target has no equivalent and
+# the plugin exposes no allowInsecureConnections option of its own.
+
+name: Run E2E Suite
+description: Build the Quickstart sample and drive it with Maestro against a real ThunderID server
+
+inputs:
+  thunderid-version:
+    description: ThunderID release to test against, without the leading "v". Defaults to the latest release.
+    required: false
+    default: ""
+  artifact-suffix:
+    description: Appended to the debug artifact name, so concurrent callers do not collide.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: 🐦 Set up Flutter
+      uses: subosito/flutter-action@f2c4f6686ca8e8d6e6d0f28410eeef506ed66aff # v2
+      with:
+        channel: stable
+        cache: true
+
+    - name: 🧭 Install Maestro
+      shell: bash
+      # Pinned rather than latest: an unpinned install swaps the test runner out from under the
+      # suite between runs, so a CI failure cannot be reproduced against the version a
+      # contributor has locally. Bump this deliberately, after checking the flows against it.
+      env:
+        MAESTRO_VERSION: "2.9.0"
+      run: |
+        curl -Ls "https://get.maestro.mobile.dev" | bash
+        echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+
+    - name: 🔬 Run E2E Suite
+      shell: bash
+      working-directory: tests/e2e
+      env:
+        THUNDERID_VERSION: ${{ inputs.thunderid-version }}
+      run: ./run-e2e.sh
+
+    - name: 📤 Upload Debug Artifacts
+      if: ${{ failure() }}
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      with:
+        name: e2e-debug-flutter${{ inputs.artifact-suffix }}
+        # Maestro writes screenshots, the recorded hierarchy and its own logs here on failure,
+        # which is the only way to tell a genuine regression from a flake after the fact.
+        path: |
+          ~/.maestro/tests
+          tests/e2e/report.xml
+          tests/e2e/.thunderid-server/server.log
+        retention-days: 7
+        if-no-files-found: ignore
