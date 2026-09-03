@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:thunderid_flutter/src/models/flow_models.dart';
 import 'package:thunderid_flutter/src/models/thunderid_config.dart';
 import 'package:thunderid_flutter/src/models/thunderid_error.dart';
+import 'package:thunderid_flutter/src/models/user.dart';
 import 'package:thunderid_flutter/src/thunderid_client.dart';
 
 void main() {
@@ -30,6 +31,30 @@ void main() {
             return '/';
           case 'getAccessToken':
             return 'mock-access-token';
+          case 'getUserProfile':
+            return <Object?, Object?>{
+              'id': 'user-1',
+              'isReadOnly': false,
+              'attributes': <Object?, Object?>{
+                'email': 'ada@example.com',
+                'name': <Object?, Object?>{'givenName': 'Ada'},
+              },
+            };
+          case 'getUserSchema':
+            return <Object?, Object?>{
+              'email': <Object?, Object?>{
+                'type': 'STRING',
+                'required': true,
+                'displayName': 'Email',
+              },
+            };
+          case 'updateUserProfile':
+            final updateArgs = call.arguments as Map<Object?, Object?>;
+            return <Object?, Object?>{
+              'id': 'user-1',
+              'isReadOnly': false,
+              'attributes': updateArgs['payload'],
+            };
           case 'continueFederatedAuth':
             final args = call.arguments as Map<Object?, Object?>;
             if (args['redirectUrl'] == 'https://cancel.example') {
@@ -64,6 +89,28 @@ void main() {
       expect(log.any((c) => c.method == 'initialize'), true);
     });
 
+    test('initialize defaults transport and profile flags safely', () async {
+      const config = ThunderIDConfig(baseUrl: 'https://localhost:8090');
+      await client.initialize(config);
+
+      final args = log.firstWhere((c) => c.method == 'initialize').arguments
+          as Map<Object?, Object?>;
+      expect(args['fetchUserProfile'], true);
+      expect(args['allowInsecureConnections'], false);
+    });
+
+    test('initialize forwards allowInsecureConnections when opted in', () async {
+      const config = ThunderIDConfig(
+        baseUrl: 'https://localhost:8090',
+        allowInsecureConnections: true,
+      );
+      await client.initialize(config);
+
+      final args = log.firstWhere((c) => c.method == 'initialize').arguments
+          as Map<Object?, Object?>;
+      expect(args['allowInsecureConnections'], true);
+    });
+
     test('initialize throws ALREADY_INITIALIZED when called twice', () async {
       const config = ThunderIDConfig(baseUrl: 'https://localhost:8090', clientId: 'test');
       await client.initialize(config);
@@ -86,6 +133,59 @@ void main() {
       const config = ThunderIDConfig(baseUrl: 'https://localhost:8090', clientId: 'test');
       await client.initialize(config);
       expect(client.isLoading(), false);
+    });
+  });
+
+  group('user profile', () {
+    const config = ThunderIDConfig(baseUrl: 'https://localhost:8090');
+
+    test('getUserProfile decodes the /users/me envelope', () async {
+      await client.initialize(config);
+      final profile = await client.getUserProfile();
+
+      expect(profile.id, 'user-1');
+      expect(profile.isReadOnly, false);
+      expect(profile.attributes['email'], 'ada@example.com');
+      // Nested channel maps arrive as Map<Object?, Object?> and must be deep-cast.
+      expect(profile.attributes['name'], isA<Map<String, dynamic>>());
+    });
+
+    test('getUserSchema decodes the attribute map', () async {
+      await client.initialize(config);
+      final schema = await client.getUserSchema();
+
+      expect(schema.keys, ['email']);
+      expect(schema['email']?.required, true);
+      expect(schema['email']?.displayName, 'Email');
+    });
+
+    test('updateUserProfile wraps the payload and returns the saved profile', () async {
+      await client.initialize(config);
+      final profile = await client.updateUserProfile({'displayName': 'Grace'});
+
+      final call = log.firstWhere((c) => c.method == 'updateUserProfile');
+      final args = call.arguments as Map<Object?, Object?>;
+      expect(args['payload'], {'displayName': 'Grace'});
+      expect(args.containsKey('userId'), false);
+      expect(profile.attributes['displayName'], 'Grace');
+    });
+
+    test('setCachedUser writes merged claims back to the native cache', () async {
+      await client.initialize(config);
+      await client.setCachedUser(
+        const User({'sub': 'user-1', 'displayName': 'Grace'}),
+      );
+
+      final call = log.firstWhere((c) => c.method == 'setCachedUser');
+      final args = call.arguments as Map<Object?, Object?>;
+      expect(args['user'], {'sub': 'user-1', 'displayName': 'Grace'});
+    });
+
+    test('profile calls before init throw SDK_NOT_INITIALIZED', () {
+      expect(
+        () => client.getUserSchema(),
+        throwsA(isA<IAMException>().having((e) => e.code, 'code', ThunderIDErrorCode.sdkNotInitialized)),
+      );
     });
   });
 

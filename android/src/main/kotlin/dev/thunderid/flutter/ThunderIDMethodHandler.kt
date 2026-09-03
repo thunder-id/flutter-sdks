@@ -110,7 +110,7 @@ class ThunderIDMethodHandler(private val context: Context) {
                 }
                 "decodeJwtToken" -> {
                     val token = args["token"] as? String ?: ""
-                    result.success(client.decodeJwtToken(token))
+                    result.success(client.decodeJwtToken(token).mapValues { unwrapJson(it.value) })
                 }
                 "clearSession" -> {
                     client.clearSession()
@@ -119,15 +119,22 @@ class ThunderIDMethodHandler(private val context: Context) {
                 "getUser" -> {
                     result.success(encodeUser(client.getUser()))
                 }
+                "setCachedUser" -> {
+                    @Suppress("UNCHECKED_CAST")
+                    val claims = args["user"] as? Map<String, Any?> ?: emptyMap()
+                    client.setCachedUser(User(claims.nonNullValues()))
+                    result.success(null)
+                }
                 "getUserProfile" -> {
-                    val profile = client.getUserProfile()
-                    result.success(mapOf("id" to profile.id, "claims" to emptyMap<String, Any>()))
+                    result.success(encodeUserProfile(client.getUserProfile()))
+                }
+                "getUserSchema" -> {
+                    result.success(client.getUserSchema().mapValues { encodeAttributeSchema(it.value) })
                 }
                 "updateUserProfile" -> {
                     @Suppress("UNCHECKED_CAST")
-                    val payload = args["payload"] as? Map<String, Any> ?: emptyMap()
-                    val user = client.updateUserProfile(payload, args["userId"] as? String)
-                    result.success(encodeUser(user))
+                    val payload = args["payload"] as? Map<String, Any?> ?: emptyMap()
+                    result.success(encodeUserProfile(client.updateUserProfile(payload.nonNullValues())))
                 }
                 "getFlowMeta" -> {
                     val appId = args["applicationId"] as? String ?: ""
@@ -180,6 +187,7 @@ class ThunderIDMethodHandler(private val context: Context) {
                 null
             },
             tokenValidation = validation,
+            allowInsecureConnections = args["allowInsecureConnections"] as? Boolean ?: false,
             vendor = args["vendor"] as? String ?: ThunderIDConfig.DEFAULT_VENDOR
         )
     }
@@ -208,8 +216,53 @@ class ThunderIDMethodHandler(private val context: Context) {
         audience = map["audience"] as? String
     )
 
-    // Claims are dynamic, so the whole set crosses the channel untouched.
-    private fun encodeUser(user: User) = user.claims
+    /**
+     * The standard codec can carry nulls, but the SDK models claims and attributes as
+     * non-null maps, so drop them the same way the SDK's own `getUser` does.
+     */
+    private fun Map<String, Any?>.nonNullValues(): Map<String, Any> =
+        filterValues { it != null }.mapValues { it.value as Any }
+
+    // Claims are dynamic, so the whole set crosses the channel.
+    private fun encodeUser(user: User) = user.claims.mapValues { unwrapJson(it.value) }
+
+    /**
+     * JWT claims are decoded with org.json, so a nested claim (for example `assurance`)
+     * stays an org.json container. The Flutter standard codec cannot encode those, so
+     * rebuild them as plain maps and lists. Mirrors `unwrapClaim` in the iOS handler.
+     */
+    private fun unwrapJson(value: Any?): Any? = when {
+        value === org.json.JSONObject.NULL -> null
+        value is org.json.JSONObject ->
+            value.keys().asSequence().associateWith { unwrapJson(value.opt(it)) }
+        value is org.json.JSONArray ->
+            (0 until value.length()).map { unwrapJson(value.opt(it)) }
+        else -> value
+    }
+
+    // Attributes are deserialized by Gson, which already yields plain maps and lists,
+    // so unlike JWT claims they need no unwrapping.
+    private fun encodeUserProfile(profile: UserProfile) = mapOf(
+        "id" to profile.id,
+        "ouId" to profile.ouId,
+        "type" to profile.type,
+        "attributes" to profile.attributes,
+        "display" to profile.display,
+        "isReadOnly" to profile.isReadOnly,
+    )
+
+    private fun encodeAttributeSchema(schema: AttributeSchema): Map<String, Any?> = mapOf(
+        "credential" to schema.credential,
+        "description" to schema.description,
+        "displayName" to schema.displayName,
+        "mutability" to schema.mutability,
+        "readOnly" to schema.readOnly,
+        "regex" to schema.regex,
+        "required" to schema.required,
+        "subAttributes" to schema.subAttributes?.map { encodeAttributeSchema(it) },
+        "type" to schema.type,
+        "unique" to schema.unique,
+    )
 
     private fun encodeFlowResponse(r: EmbeddedFlowResponse) = mapOf(
         "flowId" to r.flowId, "flowStatus" to r.flowStatus.name,

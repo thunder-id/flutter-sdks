@@ -37,10 +37,14 @@ const Map<String, String> thunderDefaultStrings = {
   // User profile
   'userProfile.title': 'Profile',
   'userProfile.save': 'Save Changes',
+  'userProfile.edit': 'Edit',
+  'userProfile.cancel': 'Cancel',
   'userProfile.changePassword': 'Change Password',
   'userProfile.loading': 'Loading profile\u2026',
   'userProfile.error.load': 'Failed to load profile.',
   'userProfile.error.save': 'Failed to save changes.',
+  'userProfile.validation.required': 'This field is required.',
+  'userProfile.validation.pattern': 'This value is not valid.',
 
   // Organizations
   'organization.unnamed': 'Organization',

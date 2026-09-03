@@ -9,6 +9,7 @@ import '../i18n/thunderid_i18n.dart';
 import '../models/preferences.dart';
 import '../models/thunderid_config.dart';
 import '../models/user.dart';
+import '../models/user_profile.dart';
 import '../thunderid_client.dart';
 
 /// Provides a [ThunderIDClient] and reactive authentication state to the widget tree.
@@ -57,6 +58,9 @@ class ThunderIDState extends State<ThunderIDProvider> {
   String? get error => _error;
   ThunderIDPreferences? get preferences => widget.config.preferences;
 
+  /// Mirrors [ThunderIDConfig.fetchUserProfile].
+  bool get fetchUserProfileEnabled => widget.config.fetchUserProfile;
+
   @override
   void initState() {
     super.initState();
@@ -72,6 +76,7 @@ class ThunderIDState extends State<ThunderIDProvider> {
       final signedIn = await client.isSignedIn().timeout(const Duration(seconds: 10));
       if (signedIn) {
         _user = await client.getUser().timeout(const Duration(seconds: 10));
+        _syncUserProfile();
       }
       _initialized = true;
       _error = null;
@@ -90,12 +95,37 @@ class ThunderIDState extends State<ThunderIDProvider> {
     try {
       final signedIn = await client.isSignedIn();
       _user = signedIn ? await client.getUser() : null;
+      if (signedIn) _syncUserProfile();
       _error = null;
     } catch (e) {
       _error = e.toString();
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  /// Merges [profile]'s attributes into the cached user's claims, so widgets reading
+  /// [user] reflect a freshly saved edit without waiting for the next sign-in.
+  void mergeUserProfile(UserProfile profile) {
+    final current = _user;
+    if (current == null || !mounted) return;
+    final merged = User({...current.claims, ...profile.attributes});
+    setState(() => _user = merged);
+    // Write through to the native cache as well: getUser() short-circuits on it,
+    // so a later refresh() would otherwise resurrect the pre-merge claims.
+    unawaited(client.setCachedUser(merged).catchError((Object _) {}));
+  }
+
+  /// Pulls `/users/me` in the background and merges it into [user].
+  ///
+  /// Deliberately fire-and-forget: sign-in has already succeeded by this point, so a
+  /// profile fetch failure must not be surfaced as an auth [error]. The profile view
+  /// reports its own load failures.
+  void _syncUserProfile() {
+    if (!fetchUserProfileEnabled) return;
+    unawaited(
+      client.getUserProfile().then(mergeUserProfile).catchError((Object _) {}),
+    );
   }
 
   /// Switches the active locale for UI component labels.
@@ -107,6 +137,7 @@ class ThunderIDState extends State<ThunderIDProvider> {
   @override
   Widget build(BuildContext context) => _ThunderIDScope(
         state: this,
+        user: user,
         isSignedIn: isSignedIn,
         isLoading: isLoading,
         error: error,
@@ -117,6 +148,7 @@ class ThunderIDState extends State<ThunderIDProvider> {
 
 class _ThunderIDScope extends InheritedWidget {
   final ThunderIDState state;
+  final User? user;
   final bool isSignedIn;
   final bool isLoading;
   final String? error;
@@ -124,6 +156,7 @@ class _ThunderIDScope extends InheritedWidget {
 
   const _ThunderIDScope({
     required this.state,
+    required this.user,
     required this.isSignedIn,
     required this.isLoading,
     required this.error,
@@ -133,6 +166,9 @@ class _ThunderIDScope extends InheritedWidget {
 
   @override
   bool updateShouldNotify(_ThunderIDScope oldWidget) =>
+      // Compared by identity: merging a profile swaps in a new User whose claims
+      // changed while isSignedIn stayed true, and dependents must still rebuild.
+      !identical(user, oldWidget.user) ||
       isSignedIn != oldWidget.isSignedIn ||
       isLoading != oldWidget.isLoading ||
       error != oldWidget.error ||
