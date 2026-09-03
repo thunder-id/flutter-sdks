@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:thunderid_flutter/thunderid_flutter.dart';
@@ -19,6 +20,9 @@ void main() async {
             dotenv.env['THUNDERID_ATTESTATION_ENABLED']?.toLowerCase() == 'true',
         cloudProjectNumber:
             int.tryParse(dotenv.env['THUNDERID_CLOUD_PROJECT_NUMBER'] ?? ''),
+        // Local ThunderID instances serve a self-signed certificate, which Android
+        // rejects. Debug builds only; release builds keep strict TLS.
+        allowInsecureConnections: kDebugMode,
       ),
       child: const QuickstartApp(),
     ),

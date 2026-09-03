@@ -96,15 +96,23 @@ final class ThunderIDMethodHandler {
                 let user = try await client.getUser()
                 result(encodeUser(user))
 
+            case "setCachedUser":
+                let claims = args["user"] as? [String: Any] ?? [:]
+                client.setCachedUser(User(claims: claims.mapValues { AnyCodable($0) }))
+                result(nil)
+
             case "getUserProfile":
                 let profile = try await client.getUserProfile()
-                result(["id": profile.id, "claims": [:]])
+                result(encodeUserProfile(profile))
+
+            case "getUserSchema":
+                let schema = try await client.getUserSchema()
+                result(schema.mapValues { encodeAttributeSchema($0) })
 
             case "updateUserProfile":
                 let payload = args["payload"] as? [String: Any] ?? [:]
-                let userId = args["userId"] as? String
-                let user = try await client.updateUserProfile(payload: payload, userId: userId)
-                result(encodeUser(user))
+                let profile = try await client.updateUserProfile(payload: payload)
+                result(encodeUserProfile(profile))
 
             case "getFlowMeta":
                 let appId = args["applicationId"] as? String ?? ""
@@ -254,6 +262,32 @@ final class ThunderIDMethodHandler {
     // values unwrapped into the types the platform channel codec can encode.
     private func encodeUser(_ user: User) -> [String: Any?] {
         user.claims.mapValues { unwrapClaim($0.value) }
+    }
+
+    private func encodeUserProfile(_ profile: UserProfile) -> [String: Any?] {
+        [
+            "id": profile.id,
+            "ouId": profile.ouId,
+            "type": profile.type,
+            "attributes": profile.attributes.mapValues { unwrapClaim($0.value) },
+            "display": profile.display,
+            "isReadOnly": profile.isReadOnly
+        ]
+    }
+
+    private func encodeAttributeSchema(_ schema: AttributeSchema) -> [String: Any?] {
+        [
+            "credential": schema.credential,
+            "description": schema.description,
+            "displayName": schema.displayName,
+            "mutability": schema.mutability,
+            "readOnly": schema.readOnly,
+            "regex": schema.regex,
+            "required": schema.required,
+            "subAttributes": schema.subAttributes?.map { encodeAttributeSchema($0) },
+            "type": schema.type,
+            "unique": schema.unique
+        ]
     }
 
     private func unwrapClaim(_ value: Any) -> Any {

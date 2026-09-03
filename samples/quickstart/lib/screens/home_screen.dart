@@ -516,93 +516,103 @@ class _ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final thunder = ThunderIDProvider.of(context);
-    final user = thunder.user;
-    final displayName = user?.displayName ?? 'Guest';
-    final email = user?.email ?? '';
-    final userId = user?.sub ?? '—';
-    final username = user?.username ?? '—';
-
-    return Scaffold(
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── Back button ──────────────────────────────────────────────
-              const SizedBox(height: 16),
-              GestureDetector(
-                onTap: onBack,
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.chevron_left, color: _kBlue, size: 22),
-                    Text(
-                      'Home',
-                      style: TextStyle(
-                        color: _kBlue,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
+    // BaseUserProfile drives the /users/me data and edit/save state, so this screen
+    // keeps its own card design and adds inline per-field edit controls to it.
+    return BaseUserProfile(
+      onSaved: () => ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profile saved')),
+      ),
+      builder: (ctx, state) => Scaffold(
+        body: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── Back button ────────────────────────────────────────────
+                const SizedBox(height: 16),
+                GestureDetector(
+                  onTap: onBack,
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.chevron_left, color: _kBlue, size: 22),
+                      Text(
+                        'Home',
+                        style: TextStyle(
+                          color: _kBlue,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // ── Avatar + name + email ────────────────────────────────────
-              Center(
-                child: Column(
-                  children: [
-                    const UserAvatar(size: 56),
-                    const SizedBox(height: 12),
-                    Text(
-                      displayName,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: _kTextDark,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      email,
-                      style: const TextStyle(fontSize: 13, color: _kMuted),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 28),
-
-              // ── Account details section ──────────────────────────────────
-              const _SectionHeader(label: 'ACCOUNT DETAILS'),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: _kMuted.withValues(alpha: 0.2),
+                    ],
                   ),
-                  borderRadius: BorderRadius.circular(14),
                 ),
-                child: Column(
-                  children: [
-                    _InfoRow(
-                      label: 'USER ID',
-                      value: userId,
-                      monospace: true,
-                    ),
-                    const Divider(height: 1),
-                    _InfoRow(label: 'USERNAME', value: username),
-                  ],
-                ),
-              ),
 
-              const SizedBox(height: 32),
-            ],
+                const SizedBox(height: 24),
+
+                if (state.isLoading && state.profile == null)
+                  const Center(child: CircularProgressIndicator())
+                else if (state.error != null)
+                  Text(
+                    state.error!,
+                    style: const TextStyle(fontSize: 13, color: _kRed),
+                  )
+                else ...[
+                  // ── Avatar + name + email ──────────────────────────────
+                  Center(
+                    child: Column(
+                      children: [
+                        const UserAvatar(size: 56),
+                        const SizedBox(height: 12),
+                        Text(
+                          state.displayName,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: _kTextDark,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          state.email ?? '',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: _kMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 28),
+
+                  // ── Account details section ────────────────────────────
+                  const _SectionHeader(label: 'ACCOUNT DETAILS'),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: _kMuted.withValues(alpha: 0.2),
+                      ),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Column(
+                      children: [
+                        for (final field in state.fields) ...[
+                          if (field != state.fields.first)
+                            const Divider(height: 1),
+                          _DetailFieldRow(field: field, state: state),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+
+                const SizedBox(height: 32),
+              ],
+            ),
           ),
         ),
       ),
@@ -628,45 +638,85 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-class _InfoRow extends StatelessWidget {
-  final String label;
-  final String value;
-  final bool monospace;
-  const _InfoRow({
-    required this.label,
-    required this.value,
-    this.monospace = false,
-  });
+/// A single row: pencil to edit, then an inline field with save/cancel.
+class _DetailFieldRow extends StatelessWidget {
+  final ProfileField field;
+  final UserProfileState state;
+  const _DetailFieldRow({required this.field, required this.state});
 
   @override
   Widget build(BuildContext context) {
+    final isEditing = state.isEditing(field.name);
+    final error = state.fieldError(field.name);
+    final value = stringifyFieldValue(field.rawValue);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 110,
-            child: Text(
-              label,
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: _kMuted,
-                letterSpacing: 0.3,
+          Row(
+            children: [
+              SizedBox(
+                width: 110,
+                child: Text(
+                  field.label.toUpperCase(),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: _kMuted,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+              ),
+              if (isEditing && !field.isReadonly) ...[
+                Expanded(
+                  child: Semantics(
+                    label: field.label,
+                    child: TextField(
+                      controller: state.controllerFor(field.name),
+                      onChanged: (v) => state.setFieldValue(field.name, v),
+                      style: const TextStyle(fontSize: 14, color: _kTextDark),
+                      decoration: const InputDecoration(isDense: true),
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => state.save(field.name),
+                  icon: const Icon(Icons.check_circle, color: _kGreen),
+                  iconSize: 20,
+                  tooltip: 'Save',
+                ),
+                IconButton(
+                  onPressed: () => state.cancel(field.name),
+                  icon: const Icon(Icons.cancel, color: _kMuted),
+                  iconSize: 20,
+                  tooltip: 'Cancel',
+                ),
+              ] else ...[
+                Expanded(
+                  child: Text(
+                    value.isEmpty ? '-' : value,
+                    style: const TextStyle(fontSize: 14, color: _kTextDark),
+                  ),
+                ),
+                if (!field.isReadonly)
+                  IconButton(
+                    onPressed: () => state.edit(field.name),
+                    icon: const Icon(Icons.edit, color: _kBlue),
+                    iconSize: 16,
+                    tooltip: 'Edit',
+                  ),
+              ],
+            ],
+          ),
+          if (error != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 110, top: 2),
+              child: Text(
+                error,
+                style: const TextStyle(fontSize: 11, color: _kRed),
               ),
             ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: TextStyle(
-                fontSize: monospace ? 12 : 14,
-                color: _kTextDark,
-                fontFamily: monospace ? 'monospace' : null,
-              ),
-            ),
-          ),
         ],
       ),
     );

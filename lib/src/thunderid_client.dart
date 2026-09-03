@@ -223,19 +223,44 @@ class ThunderIDClient {
     return User.fromMap(result);
   }
 
+  /// Overrides the user cached by the native SDK.
+  ///
+  /// [getUser] returns that cache when it is populated, so a merge of freshly
+  /// fetched `/users/me` attributes has to be written back through here, or the
+  /// next [getUser] would hand back the pre-merge claims.
+  Future<void> setCachedUser(User user) async {
+    _requireInitialized();
+    await _channel.invoke<void>('setCachedUser', {'user': user.toMap()});
+  }
+
+  /// The signed-in user's full profile, from `GET /users/me`.
   Future<UserProfile> getUserProfile({Map<String, dynamic>? options}) async {
     _requireInitialized();
     final result = await _channel.invokeMap('getUserProfile', options);
     return UserProfile.fromMap(result);
   }
 
-  Future<User> updateUserProfile(Map<String, dynamic> payload, {String? userId}) async {
+  /// Attribute schema describing which profile fields exist and how they validate,
+  /// from `GET /users/me/meta`.
+  Future<Map<String, AttributeSchema>> getUserSchema() async {
+    _requireInitialized();
+    final result = await _channel.invokeMap('getUserSchema');
+    return {
+      for (final entry in result.entries)
+        entry.key.toString(): AttributeSchema.fromMap(entry.value as Map),
+    };
+  }
+
+  /// Saves [payload] as the signed-in user's attributes via `PUT /users/me`.
+  ///
+  /// The server replaces the whole attribute set, so [payload] must carry every
+  /// attribute the profile should keep, not just the edited one.
+  Future<UserProfile> updateUserProfile(Map<String, dynamic> payload) async {
     _requireInitialized();
     final result = await _channel.invokeMap('updateUserProfile', {
       'payload': payload,
-      if (userId != null) 'userId': userId,
     });
-    return User.fromMap(result);
+    return UserProfile.fromMap(result);
   }
 
   // ── Flow Meta ─────────────────────────────────────────────────────────────

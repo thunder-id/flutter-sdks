@@ -28,6 +28,22 @@ class ThunderIDConfig {
   final String? applicationId;
   final String? organizationHandle;
 
+  // User Profile
+  /// Whether profile attributes come from `GET /users/me`, or only from the claims
+  /// already carried by the sign-in token.
+  ///
+  /// When false, [UserProfile] renders read-only: there is no attribute schema to
+  /// validate against and no endpoint to save to.
+  final bool fetchUserProfile;
+
+  // Transport
+  /// Disables TLS certificate and hostname verification on Android.
+  ///
+  /// Intended only for local development against a self-signed ThunderID instance;
+  /// gate it on a debug flag and never ship it enabled. Ignored on iOS, where the
+  /// native SDK already trusts a locally-served certificate on its own.
+  final bool allowInsecureConnections;
+
   // Platform Attestation
   /// When true, the native SDK sends a platform attestation token (Apple App Attest /
   /// Google Play Integrity) on native flow-initiate requests.
@@ -60,6 +76,8 @@ class ThunderIDConfig {
     this.signUpOptions = const {},
     this.applicationId,
     this.organizationHandle,
+    this.fetchUserProfile = true,
+    this.allowInsecureConnections = false,
     this.attestationEnabled = false,
     this.cloudProjectNumber,
     this.tokenValidation = const TokenValidationConfig(),
@@ -80,6 +98,8 @@ class ThunderIDConfig {
         'signUpOptions': signUpOptions,
         if (applicationId != null) 'applicationId': applicationId,
         if (organizationHandle != null) 'organizationHandle': organizationHandle,
+        'fetchUserProfile': fetchUserProfile,
+        'allowInsecureConnections': allowInsecureConnections,
         'attestationEnabled': attestationEnabled,
         if (cloudProjectNumber != null) 'cloudProjectNumber': cloudProjectNumber,
         'tokenValidation': tokenValidation.toMap(),
