@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'thunderid_flutter'
-  s.version          = '1.0.1'
+  s.version          = '1.1.0'
   s.summary          = 'Flutter plugin for ThunderID identity management.'
   s.description      = <<-DESC
     Bridges the Flutter SDK to the native ThunderID iOS Platform SDK via Flutter platform channels.

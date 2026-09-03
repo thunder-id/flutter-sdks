@@ -1,3 +1,7 @@
+## 1.1.0
+
+- Enable self-service profile updates in Flutter SDKs
+
 ## 1.0.1
 
 - Carry the whole claim set across the platform channel
