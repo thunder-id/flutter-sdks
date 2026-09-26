@@ -147,7 +147,13 @@ class ThunderIDMethodHandler(private val context: Context) {
                     val language = args["language"] as? String ?: "en-US"
                     result.success(client.getFlowMeta(appId, language))
                 }
-                else -> result.notImplemented()
+                else -> {
+                    if (ManagementMethodHandler.handles(method)) {
+                        result.success(ManagementMethodHandler.handle(method, args, client))
+                    } else {
+                        result.notImplemented()
+                    }
+                }
             }
         } catch (e: IAMException) {
             result.error(e.code.value, e.message, null)
@@ -197,6 +203,13 @@ class ThunderIDMethodHandler(private val context: Context) {
                 null
             },
             tokenValidation = validation,
+            endpoints = (args["endpoints"] as? Map<String, Any?>).let { endpoints ->
+                ThunderIDEndpoints(
+                    agents = endpoints?.get("agents") as? String,
+                    applications = endpoints?.get("applications") as? String,
+                    users = endpoints?.get("users") as? String
+                )
+            },
             vendor = args["vendor"] as? String ?: ThunderIDConfig.DEFAULT_VENDOR
         )
     }

@@ -31,6 +31,10 @@ enum ThunderIDErrorCode {
   confirmationCodeInvalid,
   confirmationCodeExpired,
 
+  // Management
+  forbidden,
+  notFound,
+
   // Network & Server
   networkError,
   requestTimeout,
@@ -67,6 +71,8 @@ enum ThunderIDErrorCode {
     'RECOVERY_FAILED': ThunderIDErrorCode.recoveryFailed,
     'CONFIRMATION_CODE_INVALID': ThunderIDErrorCode.confirmationCodeInvalid,
     'CONFIRMATION_CODE_EXPIRED': ThunderIDErrorCode.confirmationCodeExpired,
+    'FORBIDDEN': ThunderIDErrorCode.forbidden,
+    'NOT_FOUND': ThunderIDErrorCode.notFound,
     'NETWORK_ERROR': ThunderIDErrorCode.networkError,
     'REQUEST_TIMEOUT': ThunderIDErrorCode.requestTimeout,
     'SERVER_ERROR': ThunderIDErrorCode.serverError,
