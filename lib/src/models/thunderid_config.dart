@@ -60,6 +60,10 @@ class ThunderIDConfig {
   // Token Validation
   final TokenValidationConfig tokenValidation;
 
+  /// Collection URL overrides for the management operations, for a management API
+  /// that runs on a different host from [baseUrl].
+  final ThunderIDEndpoints endpoints;
+
   // UI Preferences (theme + i18n) — ignored by the protocol layer
   final ThunderIDPreferences? preferences;
 
@@ -86,6 +90,7 @@ class ThunderIDConfig {
     this.attestationEnabled = false,
     this.cloudProjectNumber,
     this.tokenValidation = const TokenValidationConfig(),
+    this.endpoints = const ThunderIDEndpoints(),
     this.preferences,
     this.vendor = defaultVendor,
   });
@@ -108,8 +113,25 @@ class ThunderIDConfig {
         'attestationEnabled': attestationEnabled,
         if (cloudProjectNumber != null) 'cloudProjectNumber': cloudProjectNumber,
         'tokenValidation': tokenValidation.toMap(),
+        'endpoints': endpoints.toMap(),
         if (preferences != null) 'preferences': preferences!.toMap(),
         'vendor': vendor,
+      };
+}
+
+/// Collection URL overrides for the management operations. A `null` entry falls back
+/// to `{baseUrl}/{collection}`. A single resource is addressed as `{collection}/{id}`.
+class ThunderIDEndpoints {
+  final String? agents;
+  final String? applications;
+  final String? users;
+
+  const ThunderIDEndpoints({this.agents, this.applications, this.users});
+
+  Map<String, dynamic> toMap() => {
+        if (agents != null) 'agents': agents,
+        if (applications != null) 'applications': applications,
+        if (users != null) 'users': users,
       };
 }
 

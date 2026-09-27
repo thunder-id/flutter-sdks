@@ -126,6 +126,9 @@ final class ThunderIDMethodHandler {
                 let meta = try await client.getFlowMeta(applicationId: appId, language: language)
                 result(meta)
 
+            case let method where ManagementMethodHandler.handles(method):
+                result(try await ManagementMethodHandler.handle(method: method, args: args, client: client))
+
             default:
                 result(FlutterMethodNotImplemented)
             }
@@ -231,6 +234,11 @@ final class ThunderIDMethodHandler {
             attestationTokenProvider: attestationEnabled
                 ? { try await AppAttestTokenProvider().requestToken() } : nil,
             tokenValidation: validation,
+            endpoints: ThunderIDEndpoints(
+                agents: (args["endpoints"] as? [String: Any])?["agents"] as? String,
+                applications: (args["endpoints"] as? [String: Any])?["applications"] as? String,
+                users: (args["endpoints"] as? [String: Any])?["users"] as? String
+            ),
             vendor: args["vendor"] as? String ?? VendorConstants.vendorPrefix
         )
     }

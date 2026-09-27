@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import 'channel/thunderid_channel.dart';
+import 'management_clients.dart';
 import 'models/flow_models.dart';
 import 'models/sign_in_options.dart';
 import 'models/sign_out_options.dart';
@@ -40,6 +41,26 @@ class ThunderIDClient {
       if (clientId != null) 'clientId': clientId,
     });
     return result ?? false;
+  }
+
+  // ── Management ────────────────────────────────────────────────────────────
+
+  /// Application management operations. Throws until [initialize] has run.
+  ApplicationsClient get applications {
+    _requireInitialized();
+    return ApplicationsClient(_channel);
+  }
+
+  /// User management operations. Throws until [initialize] has run.
+  UsersClient get users {
+    _requireInitialized();
+    return UsersClient(_channel);
+  }
+
+  /// Agent management operations. Throws until [initialize] has run.
+  AgentsClient get agents {
+    _requireInitialized();
+    return AgentsClient(_channel);
   }
 
   // ── Authentication ────────────────────────────────────────────────────────
