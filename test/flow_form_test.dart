@@ -410,5 +410,120 @@ void main() {
       expect(find.byType(GoogleButton), findsNothing);
       expect(find.byType(GitHubButton), findsNothing);
     });
+
+    testWidgets(
+        'skips a USER_SELECT input instead of rendering free text, and does not submit it',
+        (tester) async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(_sdkChannel, (call) async {
+        switch (call.method) {
+          case 'initialize':
+            return true;
+          case 'isSignedIn':
+            return false;
+          case 'getFlowMeta':
+            return _flowMeta;
+          default:
+            return null;
+        }
+      });
+
+      final step = EmbeddedFlowResponse(
+        flowStatus: FlowStatus.promptOnly,
+        data: <String, dynamic>{
+          'inputs': [
+            {'ref': 'input_username', 'identifier': 'username', 'type': 'TEXT_INPUT'},
+            {'ref': 'input_owner', 'identifier': 'owner', 'type': 'USER_SELECT'},
+          ],
+          'actions': [
+            {'ref': 'action_001', 'nextNode': 'submit'},
+          ],
+        },
+        challengeToken: 'token',
+      );
+
+      Map<String, String>? submitted;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ThunderIDProvider(
+              config: _config,
+              child: FlowForm(
+                applicationId: 'app-1',
+                currentStep: step,
+                isLoading: false,
+                error: null,
+                submit: (actionId, inputs) async {
+                  submitted = inputs;
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TextField), findsOneWidget);
+      expect(find.byKey(const Key('thunderid-field-owner')), findsNothing);
+
+      await tester.tap(find.byType(FilledButton));
+      await tester.pumpAndSettle();
+
+      expect(submitted, isNotNull);
+      expect(submitted!.keys, ['username']);
+    });
+
+    testWidgets('skips a USER_SELECT component whether or not the server tags it as a FIELD',
+        (tester) async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(_sdkChannel, (call) async {
+        switch (call.method) {
+          case 'initialize':
+            return true;
+          case 'isSignedIn':
+            return false;
+          case 'getFlowMeta':
+            return _flowMeta;
+          default:
+            return null;
+        }
+      });
+
+      final step = EmbeddedFlowResponse(
+        flowStatus: FlowStatus.promptOnly,
+        data: <String, dynamic>{
+          'meta': {
+            'components': [
+              {'type': 'USER_SELECT', 'ref': 'owner_plain', 'label': 'Owner'},
+              {'type': 'USER_SELECT', 'category': 'FIELD', 'ref': 'owner_field', 'label': 'Owner'},
+            ],
+          },
+          'actions': [
+            {'ref': 'action_001', 'nextNode': 'submit'},
+          ],
+        },
+        challengeToken: 'token',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ThunderIDProvider(
+              config: _config,
+              child: FlowForm(
+                applicationId: 'app-1',
+                currentStep: step,
+                isLoading: false,
+                error: null,
+                submit: (actionId, inputs) async {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TextField), findsNothing);
+    });
   });
 }
