@@ -53,6 +53,7 @@ class _FlowFormState extends State<FlowForm> {
   final _controllers = <String, TextEditingController>{};
   final _linkRecognizers = <TapGestureRecognizer>[];
   FlowTemplateResolver? _resolver;
+  final _skippedUserSelects = <String>{};
 
   @override
   void initState() {
@@ -185,6 +186,7 @@ class _FlowFormState extends State<FlowForm> {
       case 'PASSWORD_INPUT':
       case 'EMAIL_INPUT':
       case 'NUMBER_INPUT':
+      case 'USER_SELECT':
         return 'FIELD';
       case 'ACTION':
         return 'ACTION';
@@ -382,6 +384,16 @@ class _FlowFormState extends State<FlowForm> {
   ) {
     final ref = _fieldRef(comp);
     if (ref.isEmpty) return const SizedBox.shrink();
+    if (type == 'USER_SELECT') {
+      // Listing users needs a signed-in user's token, which sign-in and sign-up do not have.
+      // Skipped before a controller exists, so it is never submitted, and never shown as free text.
+      if (_skippedUserSelects.add(ref)) {
+        debugPrint(
+          '[FlowForm] USER_SELECT "$ref" is only supported where a signed-in user\'s token is available; skipping it',
+        );
+      }
+      return const SizedBox.shrink();
+    }
     _controllers.putIfAbsent(ref, TextEditingController.new);
     final isPassword = type.toLowerCase().contains('password');
     final label = _resolve(comp['label'], fallback: _capitalize(ref));
