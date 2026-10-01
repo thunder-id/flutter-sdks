@@ -366,6 +366,7 @@ final class ThunderIDMethodHandler {
             "eventType": c.eventType as Any,
             "align": c.align as Any,
             "icon": c.icon as Any,
+            "source": c.source as Any,
         ]
         if let components = c.components {
             result["components"] = components.map { encodeFlowComponent($0) }
