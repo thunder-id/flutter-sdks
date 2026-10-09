@@ -320,6 +320,7 @@ class ThunderIDMethodHandler(private val context: Context) {
         "eventType" to comp.eventType,
         "align" to comp.align,
         "icon" to comp.icon,
+        "source" to comp.source,
         "components" to comp.components?.map { encodeFlowComponent(it) }
     )
 

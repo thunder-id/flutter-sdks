@@ -13,7 +13,7 @@ export 'src/logo/avatar_logo.dart';
 export 'src/logo/curated_logo_icons.dart';
 export 'src/logo/logo_spec.dart';
 export 'src/logo/thunderid_logo.dart';
-export 'src/models/flow_models.dart';
+export 'src/models/flow_models.dart' hide KeyValuePair;
 export 'src/models/preferences.dart';
 export 'src/models/sign_in_options.dart';
 export 'src/models/sign_out_options.dart';
