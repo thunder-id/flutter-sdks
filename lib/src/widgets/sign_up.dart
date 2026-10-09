@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 
 import '../models/flow_models.dart';
 import '../models/token_exchange_config.dart';
+import 'federated_redirect.dart';
 import 'flow_form.dart';
 import 'thunderid_provider.dart';
 
@@ -94,7 +95,7 @@ class _BaseSignUpState extends State<BaseSignUp> {
           flowType: FlowType.registration,
         ),
       );
-      if (mounted) setState(() { _currentStep = response; _error = null; });
+      await _finishResponse(response, actionId: 'init', flowId: response.flowId ?? '');
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     } finally {
@@ -115,40 +116,63 @@ class _BaseSignUpState extends State<BaseSignUp> {
           flowType: FlowType.registration,
         ),
       );
-      final isComplete = response.flowStatus == FlowStatus.complete ||
-          (response.assertion?.isNotEmpty ?? false);
-      if (isComplete) {
-        if (mounted) {
-          setState(() {
-            _currentStep = response;
-            _error = null;
-          });
-        }
-        final assertion = response.assertion;
-        if (assertion != null && assertion.isNotEmpty) {
-          final signedIn = await state.client.isSignedIn();
-          if (!signedIn) {
-            await state.client.exchangeToken(
-              TokenExchangeRequestConfig(
-                subjectToken: assertion,
-                subjectTokenType: 'urn:ietf:params:oauth:token-type:jwt',
-              ),
-            );
-          }
-        }
-        await state.refresh();
-        widget.onSuccess?.call();
-      } else if (response.flowStatus == FlowStatus.error) {
-        if (mounted) setState(() => _error = response.failureReason ?? 'Registration failed');
-        widget.onError?.call();
-      } else {
-        if (mounted) setState(() { _currentStep = response; _error = null; });
-      }
+      await _finishResponse(response, actionId: actionId, flowId: flowId);
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
       widget.onError?.call();
     } finally {
       if (mounted) setState(() { _isLoading = false; _loadingActionId = null; });
+    }
+  }
+
+  /// Shared response handling for [_initFlow] and [_submit]: follows a `REDIRECTION` step (a
+  /// federated sign-up, e.g. ahead of an account-linking prompt), then applies the
+  /// completion/error/incomplete state.
+  Future<void> _finishResponse(
+    EmbeddedFlowResponse initialResponse, {
+    required String actionId,
+    required String flowId,
+  }) async {
+    final state = ThunderIDProvider.of(context);
+    final response = await followFederatedRedirect(
+      state.client,
+      initialResponse,
+      actionId: actionId,
+      applicationId: widget.applicationId,
+      flowId: flowId,
+      challengeToken: _currentStep?.challengeToken,
+    );
+    // User dismissed the browser without completing sign-up — reset silently.
+    if (response == null) return;
+
+    final isComplete = response.flowStatus == FlowStatus.complete ||
+        (response.assertion?.isNotEmpty ?? false);
+    if (isComplete) {
+      if (mounted) {
+        setState(() {
+          _currentStep = response;
+          _error = null;
+        });
+      }
+      final assertion = response.assertion;
+      if (assertion != null && assertion.isNotEmpty) {
+        final signedIn = await state.client.isSignedIn();
+        if (!signedIn) {
+          await state.client.exchangeToken(
+            TokenExchangeRequestConfig(
+              subjectToken: assertion,
+              subjectTokenType: 'urn:ietf:params:oauth:token-type:jwt',
+            ),
+          );
+        }
+      }
+      await state.refresh();
+      widget.onSuccess?.call();
+    } else if (response.flowStatus == FlowStatus.error) {
+      if (mounted) setState(() => _error = response.failureReason ?? 'Registration failed');
+      widget.onError?.call();
+    } else {
+      if (mounted) setState(() { _currentStep = response; _error = null; });
     }
   }
 

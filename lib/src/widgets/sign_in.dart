@@ -5,9 +5,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../models/flow_models.dart';
-import '../models/thunderid_error.dart';
 import '../models/token_exchange_config.dart';
 import '../models/user.dart';
+import 'federated_redirect.dart';
 import 'flow_form.dart';
 import 'thunderid_provider.dart';
 
@@ -160,32 +160,20 @@ class _BaseSignInState extends State<BaseSignIn> {
     }
 
     try {
-      if (response.type == 'REDIRECTION') {
-        if (kDebugMode) {
-          debugPrint('$_logTag REDIRECTION for actionId=$actionId, delegating to continueFederatedAuth');
-        }
-        final redirectUrl = response.data?['redirectURL'] as String?;
-        if (redirectUrl == null || redirectUrl.isEmpty) {
-          if (mounted) setState(() => _error = 'Federated sign-in did not return a redirect URL');
-          widget.onError?.call();
-          return;
-        }
-        try {
-          response = await state.client.continueFederatedAuth(
-            redirectUrl: redirectUrl,
-            actionId: actionId,
-            applicationId: widget.applicationId,
-            flowId: response.flowId ?? flowId,
-            challengeToken: response.challengeToken ?? _currentStep?.challengeToken,
-          );
-        } on IAMException catch (e) {
-          if (e.code == ThunderIDErrorCode.federatedAuthCancelled) {
-            // User dismissed the browser without completing sign-in — reset silently.
-            return;
-          }
-          rethrow;
-        }
+      if (kDebugMode && response.type == 'REDIRECTION') {
+        debugPrint('$_logTag REDIRECTION for actionId=$actionId, delegating to continueFederatedAuth');
       }
+      final resumed = await followFederatedRedirect(
+        state.client,
+        response,
+        actionId: actionId,
+        applicationId: widget.applicationId,
+        flowId: flowId,
+        challengeToken: _currentStep?.challengeToken,
+      );
+      // User dismissed the browser without completing sign-in — reset silently.
+      if (resumed == null) return;
+      response = resumed;
 
       if (_shouldAutoAdvance(response)) {
         _autoAdvancing = true;

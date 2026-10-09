@@ -178,6 +178,7 @@ class _FlowFormState extends State<FlowForm> {
         return 'RICH_TEXT';
       case 'TEXT':
       case 'IMAGE':
+      case 'KEY_VALUE_LIST':
         return 'DISPLAY';
       case 'BLOCK':
         return 'BLOCK';
@@ -250,18 +251,28 @@ class _FlowFormState extends State<FlowForm> {
     if (type == 'TEXT') {
       final label = _resolve(comp['label']);
       if (label.isEmpty) return const SizedBox.shrink();
-      final style = _str(comp['variant']) == 'HEADING_1'
-          ? Theme.of(context)
-              .textTheme
-              .titleMedium
-              ?.copyWith(fontWeight: FontWeight.bold)
-          : Theme.of(context).textTheme.bodyMedium;
+      // Each heading level keeps its own step on the type scale. HEADING_5 and
+      // HEADING_6 stay body text, since the step templates use HEADING_6 as a
+      // subtitle.
+      final textTheme = Theme.of(context).textTheme;
+      final heading = switch (_str(comp['variant'])) {
+        'HEADING_1' => textTheme.titleMedium,
+        'HEADING_2' => textTheme.titleSmall,
+        'HEADING_3' => textTheme.bodyLarge,
+        'HEADING_4' => textTheme.bodyMedium,
+        _ => null,
+      };
+      final style = heading?.copyWith(fontWeight: FontWeight.bold) ??
+          textTheme.bodyMedium;
       final align =
           _str(comp['align']) == 'center' ? TextAlign.center : TextAlign.start;
       return Padding(
         padding: const EdgeInsets.only(bottom: 16),
         child: Text(label, style: style, textAlign: align),
       );
+    }
+    if (type == 'KEY_VALUE_LIST') {
+      return _renderKeyValueList(context, comp);
     }
     if (type == 'IMAGE') {
       final src = _str(comp['src']);
@@ -273,6 +284,84 @@ class _FlowFormState extends State<FlowForm> {
       );
     }
     return const SizedBox.shrink();
+  }
+
+  Widget _renderKeyValueList(BuildContext context, Map<String, dynamic> comp) {
+    final source = _str(comp['source']);
+    final pairs = KeyValuePair.list(
+      source.isEmpty ? null : widget.currentStep?.additionalData?[source],
+    );
+    // An empty panel tells the user nothing, so a list with no pairs renders nothing at all.
+    if (pairs.isEmpty) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    final label = _resolve(comp['label']);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (label.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                label,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+              border: Border.all(color: theme.colorScheme.outlineVariant),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            // Two columns rather than a row each, so every value starts at the same edge however
+            // long the labels beside them are.
+            child: Table(
+              columnWidths: const {0: IntrinsicColumnWidth(), 1: FlexColumnWidth()},
+              defaultVerticalAlignment: TableCellVerticalAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                for (final (index, pair) in pairs.indexed)
+                  TableRow(
+                    children: [
+                      // A TableRow cannot be wrapped in MergeSemantics, so the label cell announces
+                      // the whole row and the value cell stays silent: screen readers read
+                      // "Email: alice@example.com" as one item rather than two unrelated ones.
+                      Semantics(
+                        label: '${_resolve(pair.label)}: ${pair.value}',
+                        excludeSemantics: true,
+                        child: Padding(
+                          padding: EdgeInsets.only(right: 24, top: index == 0 ? 0 : 12),
+                          child: Text(
+                            _resolve(pair.label),
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ),
+                      ExcludeSemantics(
+                        child: Padding(
+                          padding: EdgeInsets.only(top: index == 0 ? 0 : 12),
+                          child: Text(
+                            pair.value,
+                            style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _renderDivider(BuildContext context, Map<String, dynamic> comp) {
@@ -497,28 +586,34 @@ class _FlowFormState extends State<FlowForm> {
       );
     }
 
+    final variant = _str(
+      comp['variant'],
+      fallback: _str(_actionForId(metaActionId, actions)?['variant']),
+    );
+    final onPressed = widget.isLoading
+        ? null
+        : () => widget.submit(
+              actionId,
+              _controllers.map((k, v) => MapEntry(k, v.text)),
+            );
+    final child = isSpinning
+        ? const SizedBox(
+            height: 20,
+            width: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          )
+        : Text(label);
+    final key = Key('thunderid-action-$actionId');
+
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       // See the note on the field above: the Key alone is invisible outside the Flutter tree,
       // so the identifier is what an external driver can actually target.
       child: Semantics(
         identifier: 'thunderid-action-$actionId',
-        child: FilledButton(
-          key: Key('thunderid-action-$actionId'),
-          onPressed: widget.isLoading
-              ? null
-              : () => widget.submit(
-                    actionId,
-                    _controllers.map((k, v) => MapEntry(k, v.text)),
-                  ),
-          child: isSpinning
-              ? const SizedBox(
-                  height: 20,
-                  width: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : Text(label),
-        ),
+        child: isOutlinedVariant(variant)
+            ? OutlinedButton(key: key, onPressed: onPressed, child: child)
+            : FilledButton(key: key, onPressed: onPressed, child: child),
       ),
     );
   }
@@ -684,3 +779,8 @@ class _ErrorBanner extends StatelessWidget {
     );
   }
 }
+
+/// Whether a non-TRIGGER action asks for the outlined, secondary look rather than the filled primary
+/// one. A missing variant keeps the filled look, so flows that never set one render as before.
+@visibleForTesting
+bool isOutlinedVariant(String variant) => const {'SECONDARY', 'OUTLINED'}.contains(variant.toUpperCase());

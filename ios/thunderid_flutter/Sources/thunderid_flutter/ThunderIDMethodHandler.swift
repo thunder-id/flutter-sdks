@@ -171,10 +171,24 @@ final class ThunderIDMethodHandler {
                 ))
                 return
             }
+            // Any app can open the callback scheme, so a callback that does not echo the state
+            // this request was started with is not the provider's answer to it. A request with no
+            // state leaves nothing to check, so it is rejected too.
+            guard let expectedState = queryValue("state", in: url), !expectedState.isEmpty,
+                  queryValue("state", in: callbackURL) == expectedState else {
+                result(FlutterError(
+                    code: "INVALID_GRANT",
+                    message: "Callback state does not match the federated request",
+                    details: nil
+                ))
+                return
+            }
+            // The state is sent back so the server can verify it against the one it issued.
+            let inputs = ["code": code, "state": expectedState]
             let payload = EmbeddedSignInPayload(
                 flowId: args["flowId"] as? String,
                 actionId: args["actionId"] as? String ?? "",
-                inputs: ["code": code],
+                inputs: inputs,
                 challengeToken: args["challengeToken"] as? String
             )
             let request = buildFlowRequestConfig(from: ["applicationId": args["applicationId"] as? String ?? ""])
@@ -187,6 +201,10 @@ final class ThunderIDMethodHandler {
         } catch {
             result(FlutterError(code: "UNKNOWN_ERROR", message: error.localizedDescription, details: nil))
         }
+    }
+
+    private func queryValue(_ name: String, in url: URL) -> String? {
+        URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == name }?.value
     }
 
     /// Resolves the scheme `ASWebAuthenticationSession` should watch for. `afterSignInUrl` is
@@ -366,6 +384,7 @@ final class ThunderIDMethodHandler {
             "eventType": c.eventType as Any,
             "align": c.align as Any,
             "icon": c.icon as Any,
+            "source": c.source as Any,
         ]
         if let components = c.components {
             result["components"] = components.map { encodeFlowComponent($0) }

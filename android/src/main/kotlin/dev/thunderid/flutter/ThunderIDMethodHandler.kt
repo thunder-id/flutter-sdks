@@ -2,6 +2,7 @@ package dev.thunderid.flutter
 
 import android.app.Activity
 import android.content.Context
+import android.net.Uri
 import io.flutter.plugin.common.MethodChannel.Result
 import dev.thunderid.android.*
 import dev.thunderid.android.auth.FederatedAuthSession
@@ -57,10 +58,22 @@ class ThunderIDMethodHandler(private val context: Context) {
                             ThunderIDErrorCode.INVALID_GRANT,
                             "Federated sign-in did not return an authorization code"
                         )
+                    // Any app can open the callback scheme, so a callback that does not echo the state
+                    // this request was started with is not the provider's answer to it. A request with
+                    // no state leaves nothing to check, so it is rejected too.
+                    val expectedState = Uri.parse(redirectUrl).getQueryParameter("state")
+                    val state = callbackUri.getQueryParameter("state")
+                    if (expectedState.isNullOrEmpty() || state != expectedState) {
+                        throw IAMException(
+                            ThunderIDErrorCode.INVALID_GRANT,
+                            "Callback state does not match the federated request"
+                        )
+                    }
                     val payload = EmbeddedSignInPayload(
                         flowId = flowId,
                         actionId = actionId,
-                        inputs = mapOf("code" to code),
+                        // Sent back so the server can verify the state against the one it issued.
+                        inputs = mapOf("code" to code, "state" to expectedState),
                         challengeToken = challengeToken
                     )
                     val request = EmbeddedFlowRequestConfig(applicationId = applicationId)
@@ -320,6 +333,7 @@ class ThunderIDMethodHandler(private val context: Context) {
         "eventType" to comp.eventType,
         "align" to comp.align,
         "icon" to comp.icon,
+        "source" to comp.source,
         "components" to comp.components?.map { encodeFlowComponent(it) }
     )
 
