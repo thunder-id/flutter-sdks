@@ -16,6 +16,9 @@ import 'adapters/outlined_trigger_button.dart';
 import 'adapters/passkey_button.dart';
 import 'thunderid_provider.dart';
 
+/// The picker input types. Listing their options needs a signed-in user's token, so the flow form skips them.
+const _pagedSelectInputTypes = {'USER_SELECT', 'AUTH_FLOW_SELECT', 'USER_TYPE_SELECT'};
+
 /// Internal widget used by [SignIn] and [SignUp] to render a
 /// server-driven flow step. Supports `meta.components` layout when present,
 /// with a plain `inputs`/`actions` fallback.
@@ -53,6 +56,7 @@ class _FlowFormState extends State<FlowForm> {
   final _controllers = <String, TextEditingController>{};
   final _linkRecognizers = <TapGestureRecognizer>[];
   FlowTemplateResolver? _resolver;
+  final _skippedPagedSelects = <String>{};
 
   @override
   void initState() {
@@ -171,6 +175,7 @@ class _FlowFormState extends State<FlowForm> {
   String _effectiveCategory(Map<String, dynamic> comp) {
     final category = _str(comp['category']);
     if (category.isNotEmpty) return category;
+    if (_pagedSelectInputTypes.contains(_str(comp['type']))) return 'FIELD';
     switch (_str(comp['type'])) {
       case 'DIVIDER':
         return 'DIVIDER';
@@ -382,6 +387,16 @@ class _FlowFormState extends State<FlowForm> {
   ) {
     final ref = _fieldRef(comp);
     if (ref.isEmpty) return const SizedBox.shrink();
+    if (_pagedSelectInputTypes.contains(type)) {
+      // Listing their options needs a signed-in user's token, which sign-in and sign-up do not have.
+      // Skipped before a controller exists, so it is never submitted, and never shown as free text.
+      if (_skippedPagedSelects.add(ref)) {
+        debugPrint(
+          '[FlowForm] $type "$ref" is only supported where a signed-in user\'s token is available; skipping it',
+        );
+      }
+      return const SizedBox.shrink();
+    }
     _controllers.putIfAbsent(ref, TextEditingController.new);
     final isPassword = type.toLowerCase().contains('password');
     final label = _resolve(comp['label'], fallback: _capitalize(ref));

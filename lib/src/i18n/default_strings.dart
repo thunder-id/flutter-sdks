@@ -60,6 +60,15 @@ const Map<String, String> thunderDefaultStrings = {
       'An error occurred while updating your {credentialLower}. Please try again.',
   'changeCredential.unavailable.description': 'Please contact your administrator.',
 
+  // Paged select
+  'pagedSelect.placeholder': 'Select an option',
+  'pagedSelect.loading': 'Loading…',
+  'pagedSelect.loadingMore': 'Loading more…',
+  'pagedSelect.empty': 'No options found.',
+  'pagedSelect.loadMore': 'Load more',
+  'pagedSelect.retry': 'Retry',
+  'pagedSelect.loadError': 'Failed to load options.',
+
   // Organizations
   'organization.unnamed': 'Organization',
   'organizationList.empty': 'No organizations found.',
