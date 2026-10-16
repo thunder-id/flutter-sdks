@@ -5,9 +5,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../models/flow_models.dart';
-import '../models/thunderid_error.dart';
 import '../models/token_exchange_config.dart';
 import '../models/user.dart';
+import 'federated_redirect.dart';
 import 'flow_form.dart';
 import 'thunderid_provider.dart';
 
@@ -17,6 +17,8 @@ class SignInState {
   final bool isLoading;
   final String? loadingActionId;
   final String? error;
+  /// The server's translatable form of [error], when the flow returned one.
+  final FlowErrorText? errorMessage;
   final Future<void> Function(String actionId, Map<String, String> inputs) submit;
 
   const SignInState({
@@ -25,6 +27,7 @@ class SignInState {
     required this.error,
     required this.submit,
     this.loadingActionId,
+    this.errorMessage,
   });
 }
 
@@ -55,6 +58,7 @@ class SignIn extends StatelessWidget {
         isLoading: signInState.isLoading,
         loadingActionId: signInState.loadingActionId,
         error: signInState.error,
+        errorMessage: signInState.errorMessage,
         submit: signInState.submit,
         submitLabel: state.i18n.resolve('signIn.submit'),
       ),
@@ -85,7 +89,15 @@ class _BaseSignInState extends State<BaseSignIn> {
   EmbeddedFlowResponse? _currentStep;
   bool _isLoading = false;
   String? _loadingActionId;
-  String? _error;
+  String? _errorText;
+  FlowErrorText? _errorMessage;
+
+  /// Every new error replaces [_errorMessage], so a flow error's key never outlives its text.
+  String? get _error => _errorText;
+  set _error(String? value) {
+    _errorText = value;
+    _errorMessage = null;
+  }
   bool _autoAdvancing = false;
 
   /// Debug log tag scoped to the configured [ThunderIDConfig.vendor] rather than a hardcoded
@@ -160,32 +172,20 @@ class _BaseSignInState extends State<BaseSignIn> {
     }
 
     try {
-      if (response.type == 'REDIRECTION') {
-        if (kDebugMode) {
-          debugPrint('$_logTag REDIRECTION for actionId=$actionId, delegating to continueFederatedAuth');
-        }
-        final redirectUrl = response.data?['redirectURL'] as String?;
-        if (redirectUrl == null || redirectUrl.isEmpty) {
-          if (mounted) setState(() => _error = 'Federated sign-in did not return a redirect URL');
-          widget.onError?.call();
-          return;
-        }
-        try {
-          response = await state.client.continueFederatedAuth(
-            redirectUrl: redirectUrl,
-            actionId: actionId,
-            applicationId: widget.applicationId,
-            flowId: response.flowId ?? flowId,
-            challengeToken: response.challengeToken ?? _currentStep?.challengeToken,
-          );
-        } on IAMException catch (e) {
-          if (e.code == ThunderIDErrorCode.federatedAuthCancelled) {
-            // User dismissed the browser without completing sign-in — reset silently.
-            return;
-          }
-          rethrow;
-        }
+      if (kDebugMode && response.type == 'REDIRECTION') {
+        debugPrint('$_logTag REDIRECTION for actionId=$actionId, delegating to continueFederatedAuth');
       }
+      final resumed = await followFederatedRedirect(
+        state.client,
+        response,
+        actionId: actionId,
+        applicationId: widget.applicationId,
+        flowId: flowId,
+        challengeToken: _currentStep?.challengeToken,
+      );
+      // User dismissed the browser without completing sign-in — reset silently.
+      if (resumed == null) return;
+      response = resumed;
 
       if (_shouldAutoAdvance(response)) {
         _autoAdvancing = true;
@@ -247,7 +247,12 @@ class _BaseSignInState extends State<BaseSignIn> {
           }
         }
       } else if (response.flowStatus == FlowStatus.error) {
-        if (mounted) setState(() => _error = response.failureReason ?? 'Authentication failed');
+        if (mounted) {
+          setState(() {
+            _error = response.failureReason ?? 'Authentication failed';
+            _errorMessage = response.errorMessage;
+          });
+        }
         widget.onError?.call();
       } else {
         if (mounted) setState(() { _currentStep = response; _error = null; });
@@ -332,6 +337,7 @@ class _BaseSignInState extends State<BaseSignIn> {
           isLoading: _isLoading,
           loadingActionId: _loadingActionId,
           error: _error,
+          errorMessage: _errorMessage,
           submit: _submit,
         ),
       );

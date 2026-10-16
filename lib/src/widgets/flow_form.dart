@@ -30,6 +30,8 @@ class FlowForm extends StatefulWidget {
   /// don't track which action is in flight).
   final String? loadingActionId;
   final String? error;
+  /// Translated through the flow's i18n and shown in place of [error] when it resolves.
+  final FlowErrorText? errorMessage;
   final Future<void> Function(String actionId, Map<String, String> inputs)
       submit;
   final String submitLabel;
@@ -43,6 +45,7 @@ class FlowForm extends StatefulWidget {
     required this.submit,
     this.loadingActionId,
     this.submitLabel = 'Submit',
+    this.errorMessage,
   });
 
   @override
@@ -144,7 +147,7 @@ class _FlowFormState extends State<FlowForm> {
               ),
           ],
         ],
-        if (widget.error != null) _ErrorBanner(message: widget.error!),
+        if (widget.error != null) _ErrorBanner(message: _resolver?.translate(widget.errorMessage) ?? widget.error!),
       ],
     );
   }

@@ -1,6 +1,8 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import 'models/flow_models.dart';
+
 /// Resolves `{{ t(key) }}` and `{{ meta(path) }}` template literals
 /// embedded in server-returned component labels and placeholders.
 ///
@@ -14,6 +16,7 @@
 /// Any unrecognised expression is left unchanged.
 class FlowTemplateResolver {
   static final RegExp _regex = RegExp(r'\{\{\s*(.*?)\s*\}\}');
+  static final RegExp _paramRegex = RegExp(r'\{\{\s*param\(\s*(\w+)\s*\)\s*\}\}');
 
   final Map<String, dynamic> _meta;
 
@@ -23,6 +26,24 @@ class FlowTemplateResolver {
     if (text == null || text.isEmpty) return '';
     if (!text.contains('{{')) return text;
     return text.replaceAllMapped(_regex, _replace);
+  }
+
+  /// The translation of a flow error's `key`, with its `params` substituted in one pass, or null
+  /// when there is none to show. As in the JavaScript SDK, the key is looked up as
+  /// `<namespace>.<key>` and then under the `system` namespace, and a translation that still has a
+  /// placeholder is not used.
+  String? translate(FlowErrorText? text) {
+    final key = text?.key;
+    if (key == null || key.trim().isEmpty) return null;
+    for (final candidate in [key, 'system.$key']) {
+      final dot = candidate.indexOf('.');
+      if (dot == -1) continue;
+      final translation = _resolveTranslation(
+        '${candidate.substring(0, dot)}:${candidate.substring(dot + 1)}',
+      ).replaceAllMapped(_paramRegex, (m) => text!.params[m.group(1)] ?? m.group(0)!);
+      if (translation.isNotEmpty && !_paramRegex.hasMatch(translation)) return translation;
+    }
+    return null;
   }
 
   String _replace(Match match) {

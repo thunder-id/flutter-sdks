@@ -140,7 +140,8 @@ final class ThunderIDMethodHandler {
 
     /// Resumes a TRIGGER action after the server responded `type: "REDIRECTION"`: opens
     /// `redirectUrl` in an `ASWebAuthenticationSession`, extracts the `code` query parameter
-    /// from the provider's callback, and resubmits the flow with `inputs: {"code": code}` —
+    /// from the provider's callback, rejects it with `INVALID_GRANT` unless it echoes the non-empty
+    /// `state` from `redirectUrl`, and resubmits the flow with `inputs: {"code": code, "state": state}` —
     /// mirroring `BaseSignIn.handleRedirection` in `ThunderIDSwiftUI` (spec §6.1 federated
     /// sign-in extension). Handles its own errors and always calls `result` itself so a
     /// cancelled browser session can be reported with a dedicated `FEDERATED_AUTH_CANCELLED`
@@ -171,10 +172,24 @@ final class ThunderIDMethodHandler {
                 ))
                 return
             }
+            // Any app can open the callback scheme, so a callback that does not echo the state
+            // this request was started with is not the provider's answer to it. A request with no
+            // state leaves nothing to check, so it is rejected too.
+            guard let expectedState = queryValue("state", in: url), !expectedState.isEmpty,
+                  queryValue("state", in: callbackURL) == expectedState else {
+                result(FlutterError(
+                    code: "INVALID_GRANT",
+                    message: "Callback state does not match the federated request",
+                    details: nil
+                ))
+                return
+            }
+            // The state is sent back so the server can verify it against the one it issued.
+            let inputs = ["code": code, "state": expectedState]
             let payload = EmbeddedSignInPayload(
                 flowId: args["flowId"] as? String,
                 actionId: args["actionId"] as? String ?? "",
-                inputs: ["code": code],
+                inputs: inputs,
                 challengeToken: args["challengeToken"] as? String
             )
             let request = buildFlowRequestConfig(from: ["applicationId": args["applicationId"] as? String ?? ""])
@@ -187,6 +202,10 @@ final class ThunderIDMethodHandler {
         } catch {
             result(FlutterError(code: "UNKNOWN_ERROR", message: error.localizedDescription, details: nil))
         }
+    }
+
+    private func queryValue(_ name: String, in url: URL) -> String? {
+        URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == name }?.value
     }
 
     /// Resolves the scheme `ASWebAuthenticationSession` should watch for. `afterSignInUrl` is
@@ -314,7 +333,10 @@ final class ThunderIDMethodHandler {
          "stepId": r.stepId, "type": r.type,
          "data": r.data.map { encodeFlowStepData($0) },
          "assertion": r.assertion, "failureReason": r.failureReason,
-         "challengeToken": r.challengeToken]
+         "challengeToken": r.challengeToken,
+         "error": r.error?.message.map {
+             ["message": ["key": $0.key as Any, "defaultValue": $0.defaultValue as Any, "params": $0.params as Any]]
+         }]
     }
 
     private func encodeFlowStepData(_ d: FlowStepData) -> [String: Any] {

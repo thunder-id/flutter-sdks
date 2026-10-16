@@ -71,6 +71,9 @@ class EmbeddedFlowResponse {
   final String? failureReason;
   final String? challengeToken;
 
+  /// The `error.message` object: the key to translate before showing [failureReason].
+  final FlowErrorText? errorMessage;
+
   const EmbeddedFlowResponse({
     this.flowId,
     required this.flowStatus,
@@ -80,6 +83,7 @@ class EmbeddedFlowResponse {
     this.assertion,
     this.failureReason,
     this.challengeToken,
+    this.errorMessage,
   });
 
   /// The `data.additionalData` block, if present. Carries the WebAuthn/passkey ceremony
@@ -104,8 +108,29 @@ class EmbeddedFlowResponse {
       assertion: map['assertion'] as String?,
       failureReason: map['failureReason'] as String?,
       challengeToken: map['challengeToken'] as String?,
+      errorMessage: FlowErrorText.fromMap((map['error'] as Map?)?['message']),
     );
   }
+}
+
+/// A translatable flow error text: an i18n [key], its English [defaultValue], and the values for
+/// the `{{param(name)}}` placeholders a translation of [key] keeps.
+class FlowErrorText {
+  final String? key;
+  final String? defaultValue;
+  final Map<String, String> params;
+
+  const FlowErrorText({this.key, this.defaultValue, this.params = const {}});
+
+  static FlowErrorText? fromMap(Object? map) => map is Map
+      ? FlowErrorText(
+          key: map['key'] as String?,
+          defaultValue: map['defaultValue'] as String?,
+          params: {
+            for (final e in ((map['params'] as Map?) ?? const {}).entries) '${e.key}': '${e.value}',
+          },
+        )
+      : null;
 }
 
 /// One row of a `KEY_VALUE_LIST` component, read from the `additionalData` key named in its `source`.
