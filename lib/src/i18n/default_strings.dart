@@ -60,6 +60,14 @@ const Map<String, String> thunderDefaultStrings = {
       'An error occurred while updating your {credentialLower}. Please try again.',
   'changeCredential.unavailable.description': 'Please contact your administrator.',
 
+  // Select
+  'select.placeholder': 'Select an option',
+  'select.empty': 'No results found.',
+  'select.loading': 'Loading…',
+  'select.loadingMore': 'Loading more…',
+  'select.loadMore': 'Load more',
+  'select.required': 'required',
+
   // Organizations
   'organization.unnamed': 'Organization',
   'organizationList.empty': 'No organizations found.',
