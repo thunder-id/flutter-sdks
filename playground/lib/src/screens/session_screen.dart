@@ -14,7 +14,8 @@ import '../theme.dart';
 import '../widgets/ui.dart';
 import 'logs_screen.dart';
 
-/// Session inspector: user card, token countdown, refresh / sign out, tokens, claims, events.
+/// Session inspector: user card, token countdown, refresh / sign out, tokens, claims, granted
+/// permissions, events.
 class SessionScreen extends StatefulWidget {
   final PlaygroundConfig config;
   final VoidCallback onOpenLogs;
@@ -25,7 +26,7 @@ class SessionScreen extends StatefulWidget {
   State<SessionScreen> createState() => _SessionScreenState();
 }
 
-enum _Tab { tokens, claims, events }
+enum _Tab { tokens, claims, permissions, events }
 
 class _SessionScreenState extends State<SessionScreen> {
   final _log = EventLog.instance;
@@ -37,6 +38,10 @@ class _SessionScreenState extends State<SessionScreen> {
   bool _busy = false;
   Timer? _ticker;
   String? _loadedFor;
+
+  /// The SDK's permission state for the current session; replaced when the session changes.
+  GrantedPermissionsNotifier? _permissions;
+  final TextEditingController _required = TextEditingController(text: 'system:user:view');
 
   @override
   void initState() {
@@ -53,6 +58,8 @@ class _SessionScreenState extends State<SessionScreen> {
     final key = sdk.isSignedIn ? (sdk.user?.sub ?? 'signed-in') : null;
     if (key != _loadedFor) {
       _loadedFor = key;
+      _permissions?.dispose();
+      _permissions = null;
       if (key == null) {
         _accessToken = null;
         _claims = const {};
@@ -62,11 +69,15 @@ class _SessionScreenState extends State<SessionScreen> {
         unawaited(_loadToken(sdk));
       }
     }
+    // Created signed-out too: it then grants nothing and reads no token.
+    _permissions ??= sdk.grantedPermissions();
   }
 
   @override
   void dispose() {
     _ticker?.cancel();
+    _permissions?.dispose();
+    _required.dispose();
     super.dispose();
   }
 
@@ -91,6 +102,7 @@ class _SessionScreenState extends State<SessionScreen> {
     setState(() => _busy = true);
     await sdk.refresh();
     await _loadToken(sdk);
+    await _permissions?.reload();
     if (mounted) setState(() => _busy = false);
   }
 
@@ -175,7 +187,12 @@ class _SessionScreenState extends State<SessionScreen> {
               if (sdk.isSignedIn) _userCard(sdk) else _signedOutCard(context, sdk),
               const SizedBox(height: 14),
               Segmented<_Tab>(
-                options: const [(_Tab.tokens, 'Tokens'), (_Tab.claims, 'Claims'), (_Tab.events, 'Events')],
+                options: const [
+                  (_Tab.tokens, 'Tokens'),
+                  (_Tab.claims, 'Claims'),
+                  (_Tab.permissions, 'Access'),
+                  (_Tab.events, 'Events'),
+                ],
                 value: _tab,
                 onChanged: (t) => setState(() => _tab = t),
               ),
@@ -183,6 +200,7 @@ class _SessionScreenState extends State<SessionScreen> {
               ...switch (_tab) {
                 _Tab.tokens => _tokens(context),
                 _Tab.claims => _claimsList(sdk),
+                _Tab.permissions => [_permissionsView(sdk)],
                 _Tab.events => [EventList(limit: 30, onOpenAll: widget.onOpenLogs)],
               },
             ],
@@ -411,6 +429,106 @@ class _SessionScreenState extends State<SessionScreen> {
         ],
       ),
     ];
+  }
+
+  /// Granted permissions from [GrantedPermissionsNotifier], and a live [hasPermission] probe.
+  Widget _permissionsView(ThunderIDState sdk) {
+    final notifier = _permissions;
+    if (notifier == null) return const SizedBox.shrink();
+    return ListenableBuilder(
+      listenable: Listenable.merge([notifier, _required]),
+      builder: (context, _) {
+        final granted = notifier.permissions;
+        final required = _required.text.trim();
+        final allowed = notifier.can(required);
+        final covering = granted.where((p) => hasPermission([p], required)).toList();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Expanded(child: SectionLabel('Granted · sdk.grantedPermissions()')),
+                ChipButton(
+                  label: 'Reload',
+                  icon: Icons.refresh_rounded,
+                  onPressed: notifier.isLoading ? null : () => _log.trace('grantedPermissions.reload', notifier.reload),
+                ),
+              ],
+            ),
+            if (!sdk.isSignedIn)
+              Text('Sign in to read the permissions in the access token.', style: TextStyle(fontSize: 13, color: PlaygroundColors.white(0.55)))
+            else if (notifier.isLoading)
+              Text('Reading the access token.', style: TextStyle(fontSize: 13, color: PlaygroundColors.white(0.55)))
+            else if (granted.isEmpty)
+              Text(
+                'The token carries no scope or scopes claim beyond what the server granted. '
+                'Request admin permissions with THUNDERID_SCOPES in .env.',
+                style: TextStyle(fontSize: 13, height: 1.45, color: PlaygroundColors.white(0.55)),
+              )
+            else
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final permission in granted)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        color: covering.contains(permission)
+                            ? PlaygroundColors.pass.withValues(alpha: 0.16)
+                            : PlaygroundColors.white(0.05),
+                        border: Border.all(color: PlaygroundColors.white(0.08)),
+                      ),
+                      child: Text(permission, style: PlaygroundTheme.monoStyle(size: 12, color: PlaygroundColors.white(0.85))),
+                    ),
+                ],
+              ),
+            const SizedBox(height: 16),
+            const SectionLabel('Check · grantedPermissions.can()'),
+            TextField(
+              controller: _required,
+              autocorrect: false,
+              style: PlaygroundTheme.monoStyle(size: 13, color: Colors.white),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: 'system:user:view',
+                filled: true,
+                fillColor: PlaygroundColors.white(0.05),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                StatusPill(
+                  label: allowed ? 'granted' : 'not granted',
+                  color: allowed ? PlaygroundColors.passSoft : PlaygroundColors.failSoft,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    required.isEmpty
+                        ? 'An empty requirement is always covered.'
+                        : covering.isEmpty
+                            ? 'No granted permission covers "$required".'
+                            : 'Covered by ${covering.join(', ')}.',
+                    style: TextStyle(fontSize: 12.5, color: PlaygroundColors.white(0.6)),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Decoded from the token, not verified: it only decides what to show. The server still '
+              'checks every management request.',
+              style: TextStyle(fontSize: 12, height: 1.5, color: PlaygroundColors.white(0.5)),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   List<Widget> _claimsList(ThunderIDState sdk) {

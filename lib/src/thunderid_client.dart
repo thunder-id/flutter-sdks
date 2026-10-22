@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import 'channel/thunderid_channel.dart';
+import 'management/permissions.dart';
+import 'management/thunderid_management_client.dart';
 import 'models/flow_models.dart';
 import 'models/sign_in_options.dart';
 import 'models/sign_out_options.dart';
@@ -18,6 +20,8 @@ class ThunderIDClient {
   final ThunderIDChannel _channel;
   bool _initialized = false;
   bool _isLoading = false;
+  ThunderIDConfig? _config;
+  ThunderIDManagementClient? _management;
 
   ThunderIDClient({ThunderIDChannel? channel}) : _channel = channel ?? ThunderIDChannel();
 
@@ -30,6 +34,7 @@ class ThunderIDClient {
     }
     final result = await _channel.invoke<bool>('initialize', config.toMap());
     _initialized = result ?? false;
+    if (_initialized) _config = config;
     return _initialized;
   }
 
@@ -292,6 +297,31 @@ class ThunderIDClient {
     });
     return result.cast<String, dynamic>();
   }
+
+  // ── Management ────────────────────────────────────────────────────────────
+
+  /// Management operations for users, groups, roles, and agents, authorized with the signed-in
+  /// user's access token (spec "Management operations").
+  ///
+  /// Uses [ThunderIDConfig.endpoints] for collection URL overrides and
+  /// [ThunderIDConfig.http]'s fetcher, when set, as the transport.
+  ThunderIDManagementClient get management {
+    _requireInitialized();
+    final config = _config!;
+    return _management ??= ThunderIDManagementClient(
+      baseUrl: config.baseUrl,
+      endpoints: config.endpoints,
+      fetcher: config.http?.fetcher,
+      accessTokenProvider: getAccessToken,
+      allowInsecureConnections: config.allowInsecureConnections,
+    );
+  }
+
+  /// The permissions the signed-in user's access token carries, read from its `scope`/`scopes`
+  /// claim. Decoded, not verified: use it only to decide what to show, and test a requirement
+  /// against it with [hasPermission].
+  Future<List<String>> getGrantedPermissions({String? sessionId}) async =>
+      getTokenPermissions(await getAccessToken(sessionId: sessionId));
 
   // ── Private helpers ───────────────────────────────────────────────────────
 

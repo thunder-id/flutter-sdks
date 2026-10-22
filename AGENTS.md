@@ -109,6 +109,13 @@ lib/
       thunderid_i18n.dart       Locale resolution chain
       default_strings.dart      Built-in English strings
     flow_template_resolver.dart Embedded-flow URL builder
+    management/                 Management operations (users, groups, roles, agents)
+      thunderid_management_client.dart  CRUD + relationship operations over HTTP
+      management_transport.dart         ManagementFetcher + default authenticated transport
+      permissions.dart                  getTokenPermissions / hasPermission
+      management_display.dart           toManagementErrorMessage / resolveManagedIdentityName
+    models/management/          ManagedUser, Group, Role, Agent, ManagementPage
+    state/                      ResourceQuery/ResourceMutation notifiers, ManagementResources
     widgets/
       thunderid_provider.dart   State provider (InheritedWidget root)
       sign_in_button.dart       SignInButton / BaseSignInButton
@@ -125,6 +132,7 @@ lib/
       callback.dart             OAuth2 redirect handler
       language_switcher.dart    Locale selector
       flow_form.dart            Reusable form wrapper for flow steps
+      admin/                    Admin components (UserList, GroupMembers, RoleAssignments, ...)
 android/                        Kotlin method channel handler (JVM 17, minSdk 26)
 ios/Classes/                    Swift method channel handler (iOS 16+)
 test/                           Unit tests (flutter_test + mockito)
@@ -136,7 +144,7 @@ analysis_options.yaml           Lint configuration
 
 ## Architecture
 
-- **Layer 1 — Client** (`thunderid_client.dart`): public Dart API — initialization, auth flows, token management, user/profile access. Delegates all logic to native SDKs; does not perform networking itself.
+- **Layer 1 — Client** (`thunderid_client.dart`): public Dart API — initialization, auth flows, token management, user/profile access. Delegates all protocol logic to native SDKs. The one exception is management operations (`management/`), which call the management API from Dart with the access token the native SDK hands out, so `http.fetcher` can replace their transport.
 - **Layer 2 — Channel** (`channel/thunderid_channel.dart`): `MethodChannel('dev.thunderid/sdk')` bridge. Converts `PlatformException` → `IAMException` and handles typed deserialization.
 - **Layer 3 — Widgets** (`widgets/`): Flutter UI components built on `InheritedWidget` (`ThunderIDProvider`).
 - **Layer 4 — Sample** ([`thunder-id/samples` `quickstarts/flutter`](https://github.com/thunder-id/samples/tree/main/quickstarts/flutter)): standalone demo app that depends on the published SDK. `tests/e2e/scripts/prepare-sample.sh` fetches it and overrides that dependency with this checkout.

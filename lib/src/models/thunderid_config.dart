@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import '../management/management_transport.dart';
 import 'preferences.dart';
 
 /// Configuration for the ThunderID Flutter SDK (spec §5.2).
@@ -57,6 +58,19 @@ class ThunderIDConfig {
   /// on a debug check, as the Quickstart sample does.
   final bool allowInsecureConnections;
 
+  /// Per-endpoint URL overrides for the management collections. Unset, a collection resolves to
+  /// `{baseUrl}/{collection}`. The keys are the management collections in `ManagementEndpointKeys`: `users`,
+  /// `userTypes`, `groups`, `roles`, `agents`, and `agentTypes`. A value is the collection URL; a
+  /// single resource is addressed as that URL followed by its identifier. Each URL must be HTTPS
+  /// (plain HTTP is accepted for a loopback address only).
+  ///
+  /// Consumed by the Dart management layer only; not forwarded to the native SDKs.
+  final Map<String, String> endpoints;
+
+  /// HTTP options. [ThunderIDHttpConfig.fetcher] replaces the transport for management
+  /// operations only. Not forwarded to the native SDKs.
+  final ThunderIDHttpConfig? http;
+
   // Token Validation
   final TokenValidationConfig tokenValidation;
 
@@ -85,6 +99,8 @@ class ThunderIDConfig {
     this.allowInsecureConnections = false,
     this.attestationEnabled = false,
     this.cloudProjectNumber,
+    this.endpoints = const {},
+    this.http,
     this.tokenValidation = const TokenValidationConfig(),
     this.preferences,
     this.vendor = defaultVendor,
@@ -111,6 +127,16 @@ class ThunderIDConfig {
         if (preferences != null) 'preferences': preferences!.toMap(),
         'vendor': vendor,
       };
+}
+
+/// HTTP options (spec "Configuration": `http`).
+class ThunderIDHttpConfig {
+  /// Replaces the SDK's authenticated transport for management operations. Authentication,
+  /// token, and flow requests keep using the native SDK's transport. A fetcher passed to a single
+  /// management call takes precedence over this one.
+  final ManagementFetcher? fetcher;
+
+  const ThunderIDHttpConfig({this.fetcher});
 }
 
 class TokenValidationConfig {

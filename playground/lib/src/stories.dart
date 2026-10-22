@@ -4,6 +4,8 @@
 import 'package:flutter/material.dart';
 import 'package:thunderid_flutter/thunderid_flutter.dart';
 
+import 'admin_stories.dart';
+import 'custom_render_stories.dart';
 import 'theme.dart';
 
 enum ControlKind { text, toggle, choice }
@@ -39,7 +41,10 @@ class StoryContext {
   final Map<String, Object> values;
   final void Function(String action) emit;
 
-  const StoryContext({required this.story, required this.values, required this.emit});
+  /// Whether the preview is dark, for components themed through preferences (the Admin ones).
+  final bool dark;
+
+  const StoryContext({required this.story, required this.values, required this.emit, this.dark = true});
 
   String text(String key) => values[key]?.toString() ?? '';
   bool flag(String key) => values[key] == true;
@@ -352,6 +357,8 @@ final List<ComponentDef> componentDefs = [
           '  fallback: Text(${lit(s.text('fallback'))}),\n  child: Text(${lit(s.text('child'))}),\n)',
     },
   ),
+  ...adminComponentDefs,
+  ...customRenderComponentDefs,
 ];
 
 List<String> _locales(StoryContext s) =>

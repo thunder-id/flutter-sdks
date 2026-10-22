@@ -9,6 +9,7 @@ import 'package:thunderid_flutter/thunderid_flutter.dart';
 
 import 'config.dart';
 import 'event_log.dart';
+import 'management_endpoints.dart';
 
 enum CheckStatus { idle, running, pass, fail, unavailable }
 
@@ -98,6 +99,8 @@ class ChecksController extends ChangeNotifier {
       next = CheckState(CheckStatus.fail, e.reason);
     } on TimeoutException {
       next = const CheckState(CheckStatus.fail, 'Timed out after 20s. Is the ThunderID server reachable?');
+    } on IAMApiException catch (e) {
+      next = CheckState(CheckStatus.fail, _describeApiError(e));
     } on MissingPluginException {
       next = const CheckState(CheckStatus.fail, 'The native bridge does not implement this call on this platform.');
     } catch (e) {
@@ -144,6 +147,31 @@ void _requireInitialized(ThunderIDState sdk) {
 void _requireSignedIn(ThunderIDState sdk) {
   _requireInitialized(sdk);
   if (!sdk.isSignedIn) throw const CheckSkipped('Requires a signed-in session. Sign in from the Session tab.');
+}
+
+/// The management client, once there is a session whose token can authorize it.
+ThunderIDManagementClient _management(ThunderIDState sdk) {
+  _requireSignedIn(sdk);
+  return sdk.management;
+}
+
+/// Management failures carry the HTTP status; 403 and 404 get a hint on what to change.
+String _describeApiError(IAMApiException e) => switch (e.code) {
+      ThunderIDErrorCode.forbidden =>
+        'HTTP 403 from ${e.operation}: the access token lacks the permission. Request it with THUNDERID_SCOPES.',
+      ThunderIDErrorCode.notFound =>
+        'HTTP 404 from ${e.operation}: no such resource, or the collection URL is wrong (see the endpoints check).',
+      ThunderIDErrorCode.networkError => '${e.operation}: the management API could not be reached.',
+      _ => describeError(e),
+    };
+
+String _pageDetail(ManagementPage<Object?> page) => '${page.items.length} of ${page.totalResults}';
+
+/// The first agent, which the agent relationship checks read from.
+Future<Agent> _firstAgent(ThunderIDManagementClient management) async {
+  final page = await _log.trace('getAgents', () => management.getAgents(limit: 1), detail: _pageDetail);
+  if (page.items.isEmpty) throw const CheckSkipped('No agents registered. Create one with the AgentCreate story.');
+  return page.items.first;
 }
 
 String _requireAppId(PlaygroundConfig config) {
@@ -343,6 +371,246 @@ final List<CheckDef> checkDefs = [
     name: 'Organizations',
     api: 'not in thunderid_flutter',
     unavailableReason: 'thunderid_flutter has no organizations API.',
+  ),
+
+  // ── Management ──────────────────────────────────────────────────────────
+  CheckDef(
+    id: 'endpoints',
+    section: 'Management',
+    name: 'Management endpoints',
+    api: 'ThunderIDConfig.endpoints · client.management',
+    run: (sdk, config) async {
+      _requireInitialized(sdk);
+      final resolved = await resolveManagementEndpoints(sdk.management);
+      final baseHost = Uri.parse(config.baseUrl).authority;
+      final lines = <String>['baseUrl (sign-in, tokens, flows): $baseHost'];
+      final problems = <String>[];
+      for (final endpoint in resolved) {
+        final override = config.endpoints[endpoint.key];
+        final url = endpoint.url;
+        if (url == null) {
+          problems.add('${endpoint.key}: ${endpoint.error}');
+          continue;
+        }
+        if (override != null && url != override.replaceFirst(RegExp(r'/+$'), '')) {
+          problems.add('${endpoint.key}: override $override was not applied (got $url)');
+        }
+        lines.add('${endpoint.key} → $url${override != null ? ' (override)' : ''}');
+      }
+      _log.add('management:endpoints', lines.skip(1).join(' · '), kind: problems.isEmpty ? LogKind.ok : LogKind.error);
+      if (problems.isNotEmpty) return CheckResult.fail(problems.join('\n'));
+      final overridden = config.endpoints.length;
+      lines.add(overridden == 0 ? 'No overrides: every collection resolves under baseUrl.' : '$overridden of ${resolved.length} collections overridden.');
+      return CheckResult.pass(lines.join('\n'));
+    },
+  ),
+  CheckDef(
+    id: 'errors',
+    section: 'Management',
+    name: 'Forbidden vs not found',
+    api: 'IAMApiException · toManagementErrorMessage()',
+    run: (sdk, config) async {
+      // A client with its own fetcher answers 403 and 404 locally, so this needs no server.
+      Future<IAMApiException> failWith(int status) async {
+        final client = ThunderIDManagementClient(
+          baseUrl: config.baseUrl,
+          fetcher: (request) async => ManagementResponse(statusCode: status, body: '{"description":"server detail"}'),
+        );
+        try {
+          await client.getRoles(limit: 1);
+        } on IAMApiException catch (e) {
+          return e;
+        }
+        throw StateError('getRoles() succeeded against HTTP $status');
+      }
+
+      final forbidden = await failWith(403);
+      final missing = await failWith(404);
+      if (forbidden.code != ThunderIDErrorCode.forbidden || missing.code != ThunderIDErrorCode.notFound) {
+        return CheckResult.fail('Mapped 403 → ${forbidden.code.value}, 404 → ${missing.code.value}');
+      }
+      final message = toManagementErrorMessage(sdk.i18n.resolve, forbidden, 'admin.roles.list.error');
+      if (message == null || message.contains('server detail') || forbidden.message.contains('server detail')) {
+        return const CheckResult.fail('The server response body leaked into the error message');
+      }
+      return CheckResult.pass('403 → forbidden, 404 → notFound; UI text: "$message"');
+    },
+  ),
+  CheckDef(
+    id: 'permissions',
+    section: 'Management',
+    name: 'Permission checks',
+    api: 'client.getGrantedPermissions() · hasPermission() · grantedPermissions()',
+    run: (sdk, config) async {
+      // The hierarchy rule first: a permission covers itself and every `:` path under it.
+      const probes = [
+        (['system'], 'system:user:view', true),
+        (['system:user'], 'system:user', true),
+        (['system:user'], 'system', false),
+        (['system:user'], 'system:username', false),
+        (<String>[], '', true),
+      ];
+      for (final (granted, required, expected) in probes) {
+        if (hasPermission(granted, required) != expected) {
+          return CheckResult.fail('hasPermission($granted, "$required") should be $expected');
+        }
+      }
+      _requireSignedIn(sdk);
+      final granted = await _log.trace(
+        'getGrantedPermissions',
+        () => sdk.client.getGrantedPermissions(),
+        detail: (p) => p.isEmpty ? 'none' : p.join(' '),
+      );
+      final notifier = sdk.grantedPermissions();
+      try {
+        await notifier.reload();
+        if (notifier.permissions.toSet().difference(granted.toSet()).isNotEmpty ||
+            notifier.permissions.length != granted.length) {
+          return CheckResult.fail('GrantedPermissionsNotifier read ${notifier.permissions}, client read $granted');
+        }
+      } finally {
+        notifier.dispose();
+      }
+      if (granted.isEmpty) {
+        return const CheckResult.pass('Hierarchy rules hold; the token grants no permissions (add them with THUNDERID_SCOPES)');
+      }
+      final shown = granted.take(4).join(', ');
+      return CheckResult.pass('Hierarchy rules hold; ${granted.length} granted: $shown${granted.length > 4 ? ', …' : ''}');
+    },
+  ),
+  CheckDef(
+    id: 'groups',
+    section: 'Management',
+    name: 'Groups',
+    api: 'management.getGroups() · getGroup()',
+    run: (sdk, config) async {
+      final management = _management(sdk);
+      final page = await _log.trace('getGroups', () => management.getGroups(limit: 5), detail: _pageDetail);
+      if (page.items.isEmpty) return CheckResult.pass('No groups yet (totalResults=${page.totalResults})');
+      final group = await _log.trace('getGroup', () => management.getGroup(page.items.first.id), detail: (g) => g.name);
+      return CheckResult.pass('${page.totalResults} groups; getGroup("${group.name}") ok');
+    },
+  ),
+  CheckDef(
+    id: 'groupMembers',
+    section: 'Management',
+    name: 'Group members',
+    api: 'management.getGroupMembers(groupId)',
+    run: (sdk, config) async {
+      final management = _management(sdk);
+      final groups = await _log.trace('getGroups', () => management.getGroups(limit: 1), detail: _pageDetail);
+      if (groups.items.isEmpty) throw const CheckSkipped('No groups. Create one with the GroupCreate story.');
+      final group = groups.items.first;
+      final members = await _log.trace(
+        'getGroupMembers',
+        () => management.getGroupMembers(group.id, limit: 20),
+        detail: _pageDetail,
+      );
+      final byType = <String, int>{};
+      for (final member in members.items) {
+        byType.update(member.type.value, (n) => n + 1, ifAbsent: () => 1);
+      }
+      final summary = byType.isEmpty ? 'no members' : byType.entries.map((e) => '${e.value} ${e.key}').join(', ');
+      return CheckResult.pass('"${group.name}": ${members.totalResults} members ($summary)');
+    },
+  ),
+  CheckDef(
+    id: 'roles',
+    section: 'Management',
+    name: 'Roles',
+    api: 'management.getRoles() · getRole() · managementResources.rolesQuery()',
+    run: (sdk, config) async {
+      final management = _management(sdk);
+      final page = await _log.trace('getRoles', () => management.getRoles(limit: 5), detail: _pageDetail);
+      // The shared state layer must see the same collection through its own query.
+      final query = sdk.managementResources.rolesQuery(limit: 5);
+      try {
+        final viaState = await query.refetch();
+        if (query.error != null) throw query.error!;
+        if (viaState?.totalResults != page.totalResults) {
+          return CheckResult.fail('rolesQuery saw ${viaState?.totalResults} roles, getRoles saw ${page.totalResults}');
+        }
+      } finally {
+        query.dispose();
+      }
+      if (page.items.isEmpty) return CheckResult.pass('No roles yet (totalResults=${page.totalResults})');
+      final role = await _log.trace('getRole', () => management.getRole(page.items.first.id), detail: (r) => r.name);
+      final permissions = role.permissions.fold<int>(0, (n, p) => n + p.permissions.length);
+      return CheckResult.pass('${page.totalResults} roles; "${role.name}" grants $permissions permissions; rolesQuery agrees');
+    },
+  ),
+  CheckDef(
+    id: 'roleAssignments',
+    section: 'Management',
+    name: 'Role assignments',
+    api: 'management.getRoleAssignments(roleId, type:)',
+    run: (sdk, config) async {
+      final management = _management(sdk);
+      final roles = await _log.trace('getRoles', () => management.getRoles(limit: 1), detail: _pageDetail);
+      if (roles.items.isEmpty) throw const CheckSkipped('No roles. Create one with the RoleCreate story.');
+      final role = roles.items.first;
+      final all = await _log.trace('getRoleAssignments', () => management.getRoleAssignments(role.id), detail: _pageDetail);
+      final users = await _log.trace(
+        'getRoleAssignments(type: user)',
+        () => management.getRoleAssignments(role.id, type: RoleAssigneeType.user),
+        detail: _pageDetail,
+      );
+      if (users.items.any((a) => a.type != RoleAssigneeType.user)) {
+        return const CheckResult.fail('The type filter returned assignees of other types');
+      }
+      return CheckResult.pass('"${role.name}": ${all.totalResults} assignees, ${users.totalResults} of them users');
+    },
+  ),
+  CheckDef(
+    id: 'userGroups',
+    section: 'Management',
+    name: 'User groups (signed-in user)',
+    api: 'management.getUserGroups(userId)',
+    run: (sdk, config) async {
+      final management = _management(sdk);
+      final userId = sdk.user?.sub;
+      if (userId == null || userId.isEmpty) throw const CheckSkipped('The signed-in user has no sub claim.');
+      final page = await _log.trace('getUserGroups', () => management.getUserGroups(userId), detail: _pageDetail);
+      final names = page.items.map((g) => g.name).take(3).join(', ');
+      return CheckResult.pass(page.items.isEmpty ? 'Not a member of any group' : '${page.totalResults} groups: $names');
+    },
+  ),
+  CheckDef(
+    id: 'agentTypes',
+    section: 'Management',
+    name: 'Agent types',
+    api: 'management.getAgentTypes()',
+    run: (sdk, config) async {
+      final management = _management(sdk);
+      final page = await _log.trace('getAgentTypes', () => management.getAgentTypes(limit: 10), detail: _pageDetail);
+      final names = page.items.map((t) => t.displayName.isEmpty ? t.handle : t.displayName).take(3).join(', ');
+      return CheckResult.pass(page.items.isEmpty ? 'No agent types defined' : '${page.totalResults} types: $names');
+    },
+  ),
+  CheckDef(
+    id: 'agentGroups',
+    section: 'Management',
+    name: 'Agent groups',
+    api: 'management.getAgents() · getAgentGroups(agentId)',
+    run: (sdk, config) async {
+      final management = _management(sdk);
+      final agent = await _firstAgent(management);
+      final page = await _log.trace('getAgentGroups', () => management.getAgentGroups(agent.id), detail: _pageDetail);
+      return CheckResult.pass('"${agent.name}" is in ${page.totalResults} groups');
+    },
+  ),
+  CheckDef(
+    id: 'agentRoles',
+    section: 'Management',
+    name: 'Agent roles',
+    api: 'management.getAgents() · getAgentRoles(agentId)',
+    run: (sdk, config) async {
+      final management = _management(sdk);
+      final agent = await _firstAgent(management);
+      final page = await _log.trace('getAgentRoles', () => management.getAgentRoles(agent.id), detail: _pageDetail);
+      final names = page.items.take(3).join(', ');
+      return CheckResult.pass('"${agent.name}" has ${page.totalResults} roles${names.isEmpty ? '' : ': $names'}');
+    },
   ),
 
   // ── UI ──────────────────────────────────────────────────────────────────

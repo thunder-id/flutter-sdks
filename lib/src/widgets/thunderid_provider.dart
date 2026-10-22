@@ -6,10 +6,13 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 
 import '../i18n/thunderid_i18n.dart';
+import '../management/thunderid_management_client.dart';
 import '../models/preferences.dart';
 import '../models/thunderid_config.dart';
 import '../models/user.dart';
 import '../models/user_profile.dart';
+import '../state/granted_permissions.dart';
+import '../state/management_resources.dart';
 import '../thunderid_client.dart';
 
 /// Provides a [ThunderIDClient] and reactive authentication state to the widget tree.
@@ -39,6 +42,10 @@ class ThunderIDProvider extends StatefulWidget {
     return scope!.state;
   }
 
+  /// Like [of], but returns `null` when there is no [ThunderIDProvider] above [context].
+  static ThunderIDState? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_ThunderIDScope>()?.state;
+
   @override
   State<ThunderIDProvider> createState() => ThunderIDState();
 }
@@ -60,6 +67,28 @@ class ThunderIDState extends State<ThunderIDProvider> {
 
   /// Mirrors [ThunderIDConfig.fetchUserProfile].
   bool get fetchUserProfileEnabled => widget.config.fetchUserProfile;
+
+  ManagementResources? _managementResources;
+
+  /// Management operations, authorized with the signed-in user's access token. Available once
+  /// [initialized] is true; see [ThunderIDClient.management].
+  ThunderIDManagementClient get management => client.management;
+
+  /// The shared state layer over [management]: queries and mutations created from it reload
+  /// each other. Available once [initialized] is true.
+  ManagementResources get managementResources => _managementResources ??= ManagementResources(management);
+
+  /// A [GrantedPermissionsNotifier] over the signed-in user's access token. The caller owns and
+  /// disposes it.
+  GrantedPermissionsNotifier grantedPermissions() =>
+      GrantedPermissionsNotifier(() => client.getAccessToken(), signedIn: initialized && isSignedIn);
+
+  /// The organization unit the signed-in user belongs to, from the `ouId` claim, used by the
+  /// admin create components when the application does not pass one.
+  String? get defaultOuId {
+    final value = _user?.claims['ouId'];
+    return value is String && value.isNotEmpty ? value : null;
+  }
 
   @override
   void initState() {

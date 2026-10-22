@@ -44,7 +44,15 @@ enum ThunderIDErrorCode {
   passkeyNotSupported,
   passkeyCancelled,
   passkeyNoCredential,
-  passkeyFailed;
+  passkeyFailed,
+
+  // Management operations
+  /// The server refused a management request because the access token lacks the permission
+  /// (HTTP 403). Distinct from [notFound], so a caller can tell the two apart.
+  forbidden,
+
+  /// The management resource does not exist (HTTP 404).
+  notFound;
 
   static const _codeMap = {
     'SDK_NOT_INITIALIZED': ThunderIDErrorCode.sdkNotInitialized,
@@ -76,6 +84,8 @@ enum ThunderIDErrorCode {
     'PASSKEY_CANCELLED': ThunderIDErrorCode.passkeyCancelled,
     'PASSKEY_NO_CREDENTIAL': ThunderIDErrorCode.passkeyNoCredential,
     'PASSKEY_FAILED': ThunderIDErrorCode.passkeyFailed,
+    'FORBIDDEN': ThunderIDErrorCode.forbidden,
+    'NOT_FOUND': ThunderIDErrorCode.notFound,
   };
 
   static ThunderIDErrorCode fromString(String code) =>
@@ -96,4 +106,37 @@ class IAMException implements Exception {
 
   @override
   String toString() => '[${code.value}] $message';
+}
+
+/// An [IAMException] raised from an HTTP response, carrying the status the server answered with
+/// (spec "Error model": the API error type).
+///
+/// Raised by the management operations. [message] is built by the SDK and never contains the
+/// server's response body, which may carry personal data; the body is kept separately in
+/// [responseBody] for diagnostics and MUST NOT be shown to end users.
+class IAMApiException extends IAMException {
+  /// HTTP status code, or `0` when the request never reached the server.
+  final int statusCode;
+
+  /// HTTP reason phrase, e.g. `Forbidden`.
+  final String statusText;
+
+  /// Name of the operation that raised the error, e.g. `getRoles`.
+  final String operation;
+
+  /// The raw response body, for diagnostics only.
+  final String? responseBody;
+
+  const IAMApiException(
+    super.code,
+    super.message, {
+    required this.statusCode,
+    required this.operation,
+    this.statusText = '',
+    this.responseBody,
+    super.cause,
+  });
+
+  @override
+  String toString() => '[${code.value}] $operation: $message (HTTP $statusCode)';
 }

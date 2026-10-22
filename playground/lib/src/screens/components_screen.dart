@@ -37,6 +37,8 @@ class _ComponentsScreenState extends State<ComponentsScreen> {
       _values[def.id] = {
         ...def.defaults,
         if (def.controls.any((c) => c.name == 'applicationId')) 'applicationId': widget.config.applicationId ?? '',
+        if (def.stories.any((st) => (st.controls ?? def.controls).any((c) => c.name == 'ouId')))
+          'ouId': widget.config.ouId ?? '',
         ...def.stories.first.preset,
       };
     }
@@ -68,6 +70,7 @@ class _ComponentsScreenState extends State<ComponentsScreen> {
         story: _story,
         values: _current,
         emit: _emit,
+        dark: _dark,
       );
 
   @override

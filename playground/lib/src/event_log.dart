@@ -83,6 +83,9 @@ class EventLog extends ChangeNotifier {
 
 /// A short, readable reason for an SDK failure.
 String describeError(Object error) {
+  if (error is IAMApiException) {
+    return '${error.code.value} · HTTP ${error.statusCode} from ${error.operation}: ${error.message}';
+  }
   if (error is IAMException) return '${error.code.value}: ${error.message}';
   final text = error.toString();
   return text.length > 240 ? '${text.substring(0, 240)}…' : text;
