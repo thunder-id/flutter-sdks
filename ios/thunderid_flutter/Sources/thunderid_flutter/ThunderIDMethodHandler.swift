@@ -1,4 +1,7 @@
+import CryptoKit
 import Flutter
+import Foundation
+import Security
 import ThunderID
 
 /// Routes Flutter method channel calls to the native ThunderIDClient (spec §7.1).
@@ -44,6 +47,25 @@ final class ThunderIDMethodHandler {
                 let creationOptionsJson = args["creationOptionsJson"] as? String ?? ""
                 let inputs = try await passkeyAuthSession.register(creationOptionsJson: creationOptionsJson)
                 result(inputs)
+
+            // Sign-in on a backend: the Dart layer runs the backend contract and uses these for the
+            // PKCE pair, the system browser session, and the secure store.
+            case "generatePkce":
+                result(try generatePkce())
+
+            case "openAuthSession":
+                await handleOpenAuthSession(args, result: result)
+
+            case "readSecureValue":
+                result(secureStore(args).retrieve(key: args["key"] as? String ?? ""))
+
+            case "writeSecureValue":
+                try secureStore(args).store(key: args["key"] as? String ?? "", value: args["value"] as? String ?? "")
+                result(nil)
+
+            case "deleteSecureValue":
+                secureStore(args).delete(key: args["key"] as? String ?? "")
+                result(nil)
 
             case "buildSignInUrl":
                 let url = try client.buildSignInURL()
@@ -202,6 +224,57 @@ final class ThunderIDMethodHandler {
         } catch {
             result(FlutterError(code: "UNKNOWN_ERROR", message: error.localizedDescription, details: nil))
         }
+    }
+
+    // MARK: - Sign-in on a backend
+
+    /// Opens the backend's sign-in URL in an `ASWebAuthenticationSession` and returns the callback
+    /// URL as is. The Dart layer checks it and exchanges its one-time `session_code`.
+    private func handleOpenAuthSession(_ args: [String: Any], result: @escaping FlutterResult) async {
+        guard let url = URL(string: args["url"] as? String ?? "") else {
+            result(FlutterError(code: "INVALID_REDIRECT_URI", message: "Invalid sign-in URL", details: nil))
+            return
+        }
+        guard let scheme = callbackURLScheme(from: url) else {
+            result(FlutterError(
+                code: "INVALID_CONFIGURATION",
+                message: "Unable to determine callback URL scheme from the sign-in URL's redirect_uri",
+                details: nil
+            ))
+            return
+        }
+        do {
+            let callbackURL = try await federatedAuthSession.authenticate(url: url, callbackURLScheme: scheme)
+            result(callbackURL.absoluteString)
+        } catch is FederatedAuthSession.CancelledError {
+            result(FlutterError(code: "FEDERATED_AUTH_CANCELLED", message: "User cancelled sign-in", details: nil))
+        } catch {
+            result(FlutterError(code: "UNKNOWN_ERROR", message: error.localizedDescription, details: nil))
+        }
+    }
+
+    /// The same Keychain service `initialize` gives the native SDK, namespaced by the configured vendor.
+    private func secureStore(_ args: [String: Any]) -> KeychainStorageAdapter {
+        let vendor = args["vendor"] as? String ?? VendorConstants.vendorPrefix
+        return KeychainStorageAdapter(service: "dev.\(vendor).sdk")
+    }
+
+    /// An RFC 7636 PKCE pair: a random verifier and its S256 challenge.
+    private func generatePkce() throws -> [String: String] {
+        var bytes = [UInt8](repeating: 0, count: 64)
+        guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else {
+            throw ThunderIDError(code: .unknownError, message: "Could not generate a PKCE verifier")
+        }
+        let verifier = base64URLEncoded(Data(bytes))
+        let challenge = base64URLEncoded(Data(SHA256.hash(data: Data(verifier.utf8))))
+        return ["verifier": verifier, "challenge": challenge]
+    }
+
+    private func base64URLEncoded(_ data: Data) -> String {
+        data.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
     }
 
     private func queryValue(_ name: String, in url: URL) -> String? {

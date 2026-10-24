@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import 'backend.dart';
 import 'preferences.dart';
 
 /// Configuration for the ThunderID Flutter SDK (spec §5.2).
@@ -9,6 +10,11 @@ class ThunderIDConfig {
   static const String defaultVendor = 'thunderid';
 
   // Core
+  /// Base URL of the ThunderID server.
+  ///
+  /// When sign-in runs on a backend ([EndpointsConfig.backend]), the SDK never talks to the
+  /// ThunderID server, and this is instead the base URL of the app's API: requests under it are
+  /// sent through the backend's proxy.
   final String baseUrl;
   final String? clientId;
 
@@ -60,6 +66,16 @@ class ThunderIDConfig {
   // Token Validation
   final TokenValidationConfig tokenValidation;
 
+  // Endpoints
+  /// Endpoint overrides. Setting [EndpointsConfig.backend] hands sign-in to a backend the app
+  /// owns. It is kept out of [toMap], so it never reaches the native SDK or the OIDC provider
+  /// metadata.
+  final EndpointsConfig? endpoints;
+
+  // Session
+  /// Behaviour around the session. Kept out of [toMap]: it only applies to sign-in on a backend.
+  final SessionConfig session;
+
   // UI Preferences (theme + i18n) — ignored by the protocol layer
   final ThunderIDPreferences? preferences;
 
@@ -86,6 +102,8 @@ class ThunderIDConfig {
     this.attestationEnabled = false,
     this.cloudProjectNumber,
     this.tokenValidation = const TokenValidationConfig(),
+    this.endpoints,
+    this.session = const SessionConfig(),
     this.preferences,
     this.vendor = defaultVendor,
   });
@@ -111,6 +129,27 @@ class ThunderIDConfig {
         if (preferences != null) 'preferences': preferences!.toMap(),
         'vendor': vendor,
       };
+}
+
+/// Per-endpoint overrides (spec "Configuration").
+class EndpointsConfig {
+  /// The app backend's auth endpoints. Setting them hands sign-in to the backend: the SDK then
+  /// signs in, reads the session, and sends API calls through the backend, and the embedded
+  /// flows are refused. Never inferred, and fixed for the life of the client.
+  final BackendEndpoints? backend;
+
+  const EndpointsConfig({this.backend});
+}
+
+/// Behaviour around the session.
+class SessionConfig {
+  /// How often to ask the app's backend whether the session is still live, in seconds. Only
+  /// applies when sign-in runs on a backend: the backend's check endpoint reports liveness without
+  /// refreshing the session or counting as activity, so polling it does not keep an idle session
+  /// alive. `0` leaves only the check that runs when the app comes back to the foreground.
+  final int checkInterval;
+
+  const SessionConfig({this.checkInterval = 0});
 }
 
 class TokenValidationConfig {

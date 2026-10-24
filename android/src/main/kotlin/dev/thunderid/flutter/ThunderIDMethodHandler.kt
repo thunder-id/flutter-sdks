@@ -8,6 +8,9 @@ import dev.thunderid.android.*
 import dev.thunderid.android.auth.FederatedAuthSession
 import dev.thunderid.android.auth.PasskeyClient
 import kotlinx.coroutines.CancellationException
+import java.security.MessageDigest
+import java.security.SecureRandom
+import java.util.Base64
 
 /**
  * Routes Flutter method channel calls to the native Android ThunderIDClient (spec §7.1).
@@ -23,6 +26,9 @@ class ThunderIDMethodHandler(private val context: Context) {
      * to the application context (set at construction) if no Activity is currently attached.
      */
     var activity: Activity? = null
+
+    /** Secure stores opened for sign-in on a backend, by preferences name. */
+    private val secureStores = mutableMapOf<String, StorageAdapter>()
 
     suspend fun handle(method: String, args: Map<String, Any?>, result: Result) {
         try {
@@ -87,6 +93,27 @@ class ThunderIDMethodHandler(private val context: Context) {
                 "performPasskeyRegistration" -> {
                     val creationOptionsJson = args["creationOptionsJson"] as? String ?: ""
                     result.success(passkeyClient.register(activity ?: context, creationOptionsJson))
+                }
+                // ── Sign-in on a backend: the Dart layer runs the backend contract and uses these
+                // for the PKCE pair, the system browser session, and the secure store. ──
+                "generatePkce" -> {
+                    result.success(generatePkce())
+                }
+                "openAuthSession" -> {
+                    val url = args["url"] as? String ?: ""
+                    val callbackUri = FederatedAuthSession.launch(activity ?: context, url)
+                    result.success(callbackUri.toString())
+                }
+                "readSecureValue" -> {
+                    result.success(secureStore(args).retrieve(args["key"] as? String ?: ""))
+                }
+                "writeSecureValue" -> {
+                    secureStore(args).store(args["key"] as? String ?: "", args["value"] as? String ?: "")
+                    result.success(null)
+                }
+                "deleteSecureValue" -> {
+                    secureStore(args).delete(args["key"] as? String ?: "")
+                    result.success(null)
                 }
                 "buildSignInUrl" -> {
                     result.success(client.buildSignInUrl())
@@ -212,6 +239,26 @@ class ThunderIDMethodHandler(private val context: Context) {
             tokenValidation = validation,
             vendor = args["vendor"] as? String ?: ThunderIDConfig.DEFAULT_VENDOR
         )
+    }
+
+    /**
+     * The same EncryptedSharedPreferences store `initialize` gives the native SDK, namespaced by
+     * the configured vendor.
+     */
+    private fun secureStore(args: Map<String, Any?>): StorageAdapter {
+        val vendor = args["vendor"] as? String ?: ThunderIDConfig.DEFAULT_VENDOR
+        val prefsName = "dev.$vendor.sdk.prefs"
+        return secureStores.getOrPut(prefsName) { EncryptedStorageAdapter(context, prefsName = prefsName) }
+    }
+
+    /** An RFC 7636 PKCE pair: a random verifier and its S256 challenge. */
+    private fun generatePkce(): Map<String, String> {
+        val bytes = ByteArray(64)
+        SecureRandom().nextBytes(bytes)
+        val encoder = Base64.getUrlEncoder().withoutPadding()
+        val verifier = encoder.encodeToString(bytes)
+        val digest = MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray(Charsets.US_ASCII))
+        return mapOf("verifier" to verifier, "challenge" to encoder.encodeToString(digest))
     }
 
     @Suppress("UNCHECKED_CAST")

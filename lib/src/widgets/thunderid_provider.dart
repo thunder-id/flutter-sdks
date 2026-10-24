@@ -50,6 +50,7 @@ class ThunderIDState extends State<ThunderIDProvider> {
   bool _isLoading = false;
   User? _user;
   String? _error;
+  void Function()? _removeSignOutListener;
 
   bool get initialized => _initialized;
   bool get isLoading => _isLoading;
@@ -58,15 +59,27 @@ class ThunderIDState extends State<ThunderIDProvider> {
   String? get error => _error;
   ThunderIDPreferences? get preferences => widget.config.preferences;
 
-  /// Mirrors [ThunderIDConfig.fetchUserProfile].
-  bool get fetchUserProfileEnabled => widget.config.fetchUserProfile;
+  /// Mirrors [ThunderIDConfig.fetchUserProfile]. Off when sign-in runs on a backend: the profile
+  /// comes from the claims the backend's session reports.
+  bool get fetchUserProfileEnabled => widget.config.fetchUserProfile && widget.config.endpoints?.backend == null;
 
   @override
   void initState() {
     super.initState();
     client = widget.client ?? ThunderIDClient();
     i18n = ThunderIDI18n(widget.config.preferences?.i18n);
+    // A session that ends elsewhere, such as a sign-out in another app, clears the user.
+    _removeSignOutListener = client.onSignOut(() {
+      if (mounted) setState(() => _user = null);
+    });
     _init();
+  }
+
+  @override
+  void dispose() {
+    _removeSignOutListener?.call();
+    if (widget.client == null) client.dispose();
+    super.dispose();
   }
 
   Future<void> _init() async {

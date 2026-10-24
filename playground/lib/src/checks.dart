@@ -178,6 +178,31 @@ final List<CheckDef> checkDefs = [
     },
   ),
   CheckDef(
+    id: 'backend',
+    section: 'Authentication',
+    name: 'Sign in on a backend',
+    api: 'endpoints.backend · client.buildSignInUrl()',
+    run: (sdk, config) async {
+      _requireInitialized(sdk);
+      if (!sdk.client.isBackendMode()) {
+        throw const CheckSkipped('Set THUNDERID_BACKEND_URL to sign in through an app backend.');
+      }
+      final url = await _log.trace('buildSignInUrl', () => sdk.client.buildSignInUrl());
+      final uri = Uri.parse(url);
+      final params = uri.queryParameters;
+      final missing = ['redirect_uri', 'code_challenge'].where((p) => !params.containsKey(p)).toList();
+      if (missing.isNotEmpty) return CheckResult.fail('Backend sign-in URL is missing ${missing.join(', ')}');
+      if (params['code_challenge_method'] != 'S256') return const CheckResult.fail('PKCE method is not S256');
+      try {
+        await sdk.client.exchangeToken(const TokenExchangeRequestConfig(subjectToken: 'x', subjectTokenType: 'x'));
+        return const CheckResult.fail('exchangeToken() was not refused on a backend');
+      } on IAMException catch (e) {
+        if (e.code != ThunderIDErrorCode.operationNotSupported) rethrow;
+      }
+      return CheckResult.pass('Sign-in URL bound to PKCE for ${uri.host}${uri.path}; token operations refused');
+    },
+  ),
+  CheckDef(
     id: 'native',
     section: 'Authentication',
     name: 'Sign in (app-native flow)',

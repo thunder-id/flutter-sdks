@@ -9,6 +9,10 @@ enum ThunderIDErrorCode {
   invalidConfiguration,
   invalidRedirectUri,
 
+  /// The operation has no meaning in the configured mode, such as a token operation while sign-in
+  /// runs on a backend that keeps the tokens.
+  operationNotSupported,
+
   // Authentication
   authenticationFailed,
   userAccountLocked,
@@ -37,6 +41,10 @@ enum ThunderIDErrorCode {
   serverError,
   unknownError,
 
+  /// A request to a URL outside the API base and the bypass URLs while sign-in runs on a backend.
+  /// It is refused before anything is sent.
+  backendUnsupportedUrl,
+
   // Federated / social login (TRIGGER actions)
   federatedAuthCancelled,
 
@@ -51,6 +59,7 @@ enum ThunderIDErrorCode {
     'ALREADY_INITIALIZED': ThunderIDErrorCode.alreadyInitialized,
     'INVALID_CONFIGURATION': ThunderIDErrorCode.invalidConfiguration,
     'INVALID_REDIRECT_URI': ThunderIDErrorCode.invalidRedirectUri,
+    'OPERATION_NOT_SUPPORTED': ThunderIDErrorCode.operationNotSupported,
     'AUTHENTICATION_FAILED': ThunderIDErrorCode.authenticationFailed,
     'USER_ACCOUNT_LOCKED': ThunderIDErrorCode.userAccountLocked,
     'USER_ACCOUNT_DISABLED': ThunderIDErrorCode.userAccountDisabled,
@@ -71,6 +80,7 @@ enum ThunderIDErrorCode {
     'REQUEST_TIMEOUT': ThunderIDErrorCode.requestTimeout,
     'SERVER_ERROR': ThunderIDErrorCode.serverError,
     'UNKNOWN_ERROR': ThunderIDErrorCode.unknownError,
+    'BACKEND_UNSUPPORTED_URL': ThunderIDErrorCode.backendUnsupportedUrl,
     'FEDERATED_AUTH_CANCELLED': ThunderIDErrorCode.federatedAuthCancelled,
     'PASSKEY_NOT_SUPPORTED': ThunderIDErrorCode.passkeyNotSupported,
     'PASSKEY_CANCELLED': ThunderIDErrorCode.passkeyCancelled,

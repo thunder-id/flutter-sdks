@@ -38,6 +38,10 @@ class PlaygroundConfig {
   final bool attestationEnabled;
   final int? cloudProjectNumber;
 
+  /// Base URL of an app backend that runs sign-in (`endpoints.backend`). When set, the SDK signs
+  /// in through it and [baseUrl] is the API base its proxy fronts.
+  final String? backendUrl;
+
   const PlaygroundConfig({
     required this.baseUrl,
     this.applicationId,
@@ -46,6 +50,7 @@ class PlaygroundConfig {
     this.afterSignOutUrl,
     this.attestationEnabled = false,
     this.cloudProjectNumber,
+    this.backendUrl,
   });
 
   factory PlaygroundConfig.fromEnv(Map<String, String> env) {
@@ -62,6 +67,7 @@ class PlaygroundConfig {
       afterSignOutUrl: read('THUNDERID_AFTER_SIGN_OUT_URL'),
       attestationEnabled: read('THUNDERID_ATTESTATION_ENABLED')?.toLowerCase() == 'true',
       cloudProjectNumber: int.tryParse(read('THUNDERID_CLOUD_PROJECT_NUMBER') ?? ''),
+      backendUrl: read('THUNDERID_BACKEND_URL'),
     );
   }
 
@@ -84,6 +90,7 @@ class PlaygroundConfig {
         // Local ThunderID servers serve a self-signed certificate, which Android rejects.
         // Debug builds only; release builds keep strict TLS.
         allowInsecureConnections: kDebugMode,
+        endpoints: backendUrl == null ? null : EndpointsConfig(backend: BackendEndpoints(baseUrl: backendUrl!)),
         preferences: const ThunderIDPreferences(
           theme: ThemePreferences(mode: 'dark'),
           i18n: I18nPreferences(bundles: playgroundBundles),
