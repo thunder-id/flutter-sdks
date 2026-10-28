@@ -204,7 +204,7 @@ class _GroupMembersState extends AdminConnectedState<GroupMembers> {
               ],
               GroupMemberType.agent: [
                 for (final agent in _agents?.data?.items ?? const <Agent>[])
-                  IdentityCandidate(id: agent.id, label: agent.name),
+                  IdentityCandidate(id: agent.id, label: resolveAgentName(agent)),
               ],
             }
           : null,

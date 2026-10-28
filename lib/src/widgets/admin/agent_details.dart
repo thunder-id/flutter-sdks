@@ -91,7 +91,7 @@ class BaseAgentDetails extends StatelessWidget {
     return AdminSection(
       ac: ac,
       block: 'agent-details',
-      title: agent.name,
+      title: resolveAgentName(agent),
       description: agent.description,
       actions: [
         ...actions,
@@ -99,7 +99,7 @@ class BaseAgentDetails extends StatelessWidget {
           AdminConfirmButton(
             ac: ac,
             label: ac.t('admin.agents.details.delete.action'),
-            confirmText: ac.t('admin.agents.details.delete.confirm', {'name': agent.name}),
+            confirmText: ac.t('admin.agents.details.delete.confirm', {'name': resolveAgentName(agent)}),
             identifier: 'thunderid-action-agent-details-delete',
             isLoading: isDeleting,
             onConfirm: onDelete!,

@@ -951,8 +951,8 @@ class ThunderIDManagementClient {
   ///
   /// Raises [ThunderIDErrorCode.invalidInput] and saves nothing when the agent has no OAuth
   /// client. The update restates the agent as the server returned it, without the server-set `id`
-  /// and `clientId` and the display-only `ouHandle`, and with `delegated` derived from the OAuth
-  /// client's grant types, since the server does not store that flag.
+  /// and `clientId` and the display-only `ouHandle` and `display`, and with `delegated` derived
+  /// from the OAuth client's grant types, since the server does not store that flag.
   Future<RegenerateAgentSecretResult> regenerateAgentSecret(
     String agentId, {
     String? url,
@@ -970,7 +970,7 @@ class ThunderIDManagementClient {
         url: url,
         fetcher: fetcher,
       ),
-    )..removeWhere((key, _) => key == 'id' || key == 'clientId' || key == 'ouHandle');
+    )..removeWhere((key, _) => key == 'id' || key == 'clientId' || key == 'ouHandle' || key == 'display');
     final inboundAuthConfig = readList(current, 'inboundAuthConfig');
     if (!_hasOAuthClient(inboundAuthConfig)) {
       throw const IAMException(

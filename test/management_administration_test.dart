@@ -888,7 +888,8 @@ void main() {
               'type': 'oauth2',
             },
           ],
-          'name': 'Bot',
+          'attributes': {'name': 'Bot'},
+          'display': 'Bot',
           'ouHandle': 'default',
           'ouId': 'ou-1',
           'type': 'bot',
@@ -899,8 +900,9 @@ void main() {
 
       expect(result.clientSecret, matches(secretPattern));
       expect(server.calls, ['GET $baseUrl/agents/a-1?include=display', 'PUT $baseUrl/agents/a-1']);
-      // The display-only organization unit handle and the server-set fields stay out of the update.
+      // The display-only fields and the server-set fields stay out of the update.
       expect(server.bodyOf('PUT'), {
+        'attributes': {'name': 'Bot'},
         'delegated': false,
         'inboundAuthConfig': [
           {
@@ -911,11 +913,10 @@ void main() {
             'type': 'oauth2',
           },
         ],
-        'name': 'Bot',
         'ouId': 'ou-1',
         'type': 'bot',
       });
-      expect(result.agent.name, 'Bot');
+      expect(resolveAgentName(result.agent), 'Bot');
     });
 
     // The server does not store the delegated flag, so the update restates it from the grant types.
@@ -936,7 +937,7 @@ void main() {
                 'type': 'oauth2',
               },
             ],
-            'name': 'Assistant',
+            'attributes': {'name': 'Assistant'},
             'ouId': 'ou-1',
             'type': 'bot',
           },
@@ -949,7 +950,7 @@ void main() {
     }
 
     test('refuses to regenerate the secret of an agent with no OAuth client', () async {
-      final server = FakeServer(resource: {'id': 'a-1', 'name': 'Bot', 'ouId': 'ou-1', 'type': 'bot'});
+      final server = FakeServer(resource: {'id': 'a-1', 'attributes': {'name': 'Bot'}, 'ouId': 'ou-1', 'type': 'bot'});
 
       await expectLater(
         clientFor(server).regenerateAgentSecret('a-1'),
@@ -963,7 +964,12 @@ void main() {
     });
 
     test('UpdateAgentRequest sends delegated only when set', () {
-      expect(const UpdateAgentRequest(name: 'Bot').toJson(), {'name': 'Bot'});
+      expect(
+        const UpdateAgentRequest(attributes: {'name': 'Bot'}).toJson(),
+        {
+          'attributes': {'name': 'Bot'},
+        },
+      );
       expect(const UpdateAgentRequest(delegated: true).toJson(), {'delegated': true});
     });
   });

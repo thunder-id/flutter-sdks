@@ -840,7 +840,7 @@ final List<CheckDef> checkDefs = [
       final management = _management(sdk);
       final agent = await _firstAgent(management);
       final page = await _log.trace('getAgentGroups', () => management.getAgentGroups(agent.id), detail: _pageDetail);
-      return CheckResult.pass('"${agent.name}" is in ${page.totalResults} groups');
+      return CheckResult.pass('"${resolveAgentName(agent)}" is in ${page.totalResults} groups');
     },
   ),
   CheckDef(
@@ -853,7 +853,7 @@ final List<CheckDef> checkDefs = [
       final agent = await _firstAgent(management);
       final page = await _log.trace('getAgentRoles', () => management.getAgentRoles(agent.id), detail: _pageDetail);
       final names = page.items.take(3).join(', ');
-      return CheckResult.pass('"${agent.name}" has ${page.totalResults} roles${names.isEmpty ? '' : ': $names'}');
+      return CheckResult.pass('"${resolveAgentName(agent)}" has ${page.totalResults} roles${names.isEmpty ? '' : ': $names'}');
     },
   ),
 

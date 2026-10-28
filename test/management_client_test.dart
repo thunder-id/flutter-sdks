@@ -263,13 +263,33 @@ void main() {
       expect(fetcher.last.url.toString(), '$baseUrl/agent-types?include=display');
       expect(types.items.single.displayName, 'Assistant');
 
-      fetcher.respond = (_) => json({'id': 'a1', 'name': 'Bot', 'ouId': 'ou1', 'type': 'assistant'});
-      await client.createAgent(const CreateAgentRequest(name: 'Bot', ouId: 'ou1', type: 'assistant', owner: 'u1'));
+      fetcher.respond = (_) => json({
+            'id': 'a1',
+            'attributes': {'name': 'Bot'},
+            'display': 'Bot',
+            'ouId': 'ou1',
+            'type': 'assistant',
+          });
+      final created = await client.createAgent(
+        const CreateAgentRequest(attributes: {'name': 'Bot'}, ouId: 'ou1', type: 'assistant', owner: 'u1'),
+      );
       expect(fetcher.last.url.toString(), '$baseUrl/agents');
-      expect(jsonDecode(fetcher.last.body!), {'name': 'Bot', 'ouId': 'ou1', 'type': 'assistant', 'owner': 'u1'});
+      // The name travels in the attributes; the server no longer has a top-level agent name.
+      expect(jsonDecode(fetcher.last.body!), {
+        'ouId': 'ou1',
+        'type': 'assistant',
+        'owner': 'u1',
+        'attributes': {'name': 'Bot'},
+      });
+      expect(created.display, 'Bot');
+      expect(created.attributes, {'name': 'Bot'});
 
       await client.getAgent('a1');
       expect(fetcher.last.url.toString(), '$baseUrl/agents/a1?include=display');
+
+      fetcher.respond = (_) => json({'totalResults': 0, 'agents': <Object?>[]});
+      await client.getAgents();
+      expect(fetcher.last.url.queryParameters['include'], 'display');
     });
 
     test('identifiers are path-encoded', () async {

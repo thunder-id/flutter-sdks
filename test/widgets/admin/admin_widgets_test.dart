@@ -271,7 +271,13 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: BaseAgentDetails(
-              agent: const Agent(id: 'a1', name: 'Bot', ouId: 'ou1', type: 'assistant', isReadOnly: true),
+              agent: const Agent(
+                id: 'a1',
+                attributes: {'name': 'Bot'},
+                ouId: 'ou1',
+                type: 'assistant',
+                isReadOnly: true,
+              ),
               roles: const ['Reader'],
               onDelete: () {},
             ),
@@ -441,6 +447,54 @@ void main() {
       await tester.tap(find.byKey(const Key('thunderid-action-user-list-search-clear')));
       await tester.pumpAndSettle();
       expect(server.where('GET', '/users').last.url.queryParameters.containsKey('filter'), isFalse);
+    });
+
+    testWidgets('AgentList shows each agent by its display value or name attribute', (tester) async {
+      server.on('GET', '/agents', {
+        'totalResults': 3,
+        'agents': [
+          {'id': 'a1', 'ouId': 'ou1', 'type': 'bot', 'display': 'Concierge', 'attributes': {'name': 'concierge'}},
+          {'id': 'a2', 'ouId': 'ou1', 'type': 'bot', 'attributes': {'name': 'Triage'}},
+          {'id': 'a3', 'ouId': 'ou1', 'type': 'bot'},
+        ],
+      });
+      await tester.pumpWidget(_app(server, const AgentList()));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Concierge'), findsOneWidget);
+      expect(find.text('Triage'), findsOneWidget);
+      expect(find.text('a3'), findsOneWidget);
+      expect(server.where('GET', '/agents').last.url.queryParameters['include'], 'display');
+    });
+
+    testWidgets('AgentCreate sends the name as the name attribute', (tester) async {
+      server.on('GET', '/agent-types', {
+        'totalResults': 1,
+        'types': [
+          {'id': 't1', 'handle': 'bot', 'displayName': 'Bot', 'ouId': 'ou1'},
+        ],
+      });
+      server.on('POST', '/agents', {
+        'id': 'a1',
+        'ouId': 'ou1',
+        'type': 'bot',
+        'attributes': {'name': 'Concierge'},
+      });
+      Agent? created;
+      await tester.pumpWidget(_app(server, AgentCreate(ouId: 'ou1', onCreated: (agent) => created = agent)));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(const Key('thunderid-field-agent-create-name')), ' Concierge ');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('thunderid-action-agent-create-submit')));
+      await tester.pumpAndSettle();
+
+      expect(jsonDecode(server.where('POST', '/agents').single.body!), {
+        'ouId': 'ou1',
+        'type': 'bot',
+        'attributes': {'name': 'Concierge'},
+      });
+      expect(created == null ? null : resolveAgentName(created!), 'Concierge');
     });
 
     testWidgets('AgentList searches by name', (tester) async {

@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import '../models/management/agent.dart';
 import '../models/thunderid_error.dart';
 
 /// Turns a failed management request into a message for admin UI. A missing permission and a
@@ -45,4 +46,14 @@ String resolveManagedIdentityName({
   final username = attributes['username'];
   if (username is String && username.isNotEmpty) return username;
   return id;
+}
+
+/// Picks the label to show for [agent]: the server's `display` value, then the `name` attribute,
+/// then the agent's id.
+String resolveAgentName(Agent agent) {
+  final display = agent.display;
+  if (display != null && display.isNotEmpty) return display;
+  final name = agent.attributes['name'];
+  if (name is String && name.isNotEmpty) return name;
+  return agent.id;
 }

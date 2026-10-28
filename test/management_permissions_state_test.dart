@@ -111,6 +111,25 @@ void main() {
     });
   });
 
+  group('resolveAgentName', () {
+    test('prefers display, then the name attribute, then id', () {
+      const base = {'id': 'a1', 'ouId': 'ou1', 'type': 'bot'};
+      expect(
+        resolveAgentName(Agent.fromJson({...base, 'display': 'Shown', 'attributes': {'name': 'Bot'}})),
+        'Shown',
+      );
+      expect(resolveAgentName(Agent.fromJson({...base, 'attributes': {'name': 'Bot'}})), 'Bot');
+      expect(resolveAgentName(Agent.fromJson({...base, 'display': '', 'attributes': {'name': 'Bot'}})), 'Bot');
+      expect(resolveAgentName(Agent.fromJson({...base, 'attributes': {'name': ''}})), 'a1');
+      expect(resolveAgentName(Agent.fromJson({...base, 'attributes': {'name': 42}})), 'a1');
+      expect(resolveAgentName(Agent.fromJson(base)), 'a1');
+    });
+
+    test('ignores a stale top-level name', () {
+      expect(resolveAgentName(Agent.fromJson({'id': 'a1', 'name': 'Old', 'ouId': 'ou1', 'type': 'bot'})), 'a1');
+    });
+  });
+
   group('ManagementResources', () {
     test('a mutation reloads the queries it invalidates, and only those', () async {
       var userLoads = 0;

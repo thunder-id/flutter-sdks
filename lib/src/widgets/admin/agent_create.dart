@@ -219,7 +219,7 @@ class _AgentCreateState extends AdminConnectedState<AgentCreate> {
         unawaited(
           create.mutate(
             CreateAgentRequest(
-              name: submission.name,
+              attributes: {'name': submission.name},
               type: submission.type,
               description: submission.description,
               ouId: ouId,
