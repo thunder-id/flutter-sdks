@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 
 import '../../management/management_display.dart';
+import '../../models/management/administration.dart';
 import '../../models/management/agent.dart';
 import '../../models/management/group.dart';
 import '../../models/management/managed_user.dart';
@@ -175,6 +176,10 @@ class RoleAssignments extends StatefulWidget {
   final String roleId;
   final bool editable;
 
+  /// How an assignment is removed. [AdministrationMode.flow] runs the assignment removal flow the
+  /// server configures, which can revoke grants and end sessions first.
+  final AdministrationMode administrationMode;
+
   /// Whether to show the assignee type filter, which narrows the list on the server.
   final bool filterable;
   final String? title;
@@ -188,6 +193,7 @@ class RoleAssignments extends StatefulWidget {
     super.key,
     required this.roleId,
     this.editable = false,
+    this.administrationMode = AdministrationMode.native,
     this.filterable = true,
     this.title,
     this.description,
@@ -215,13 +221,17 @@ class _RoleAssignmentsState extends AdminConnectedState<RoleAssignments> {
     _groups = own(resources.groupsQuery(limit: 100, enabled: widget.editable));
     _agents = own(resources.agentsQuery(limit: 100, enabled: widget.editable));
     _assign = own(resources.addRoleAssignmentsMutation());
-    _unassign = own(resources.removeRoleAssignmentsMutation());
+    _unassign = own(resources.removeRoleAssignmentsMutation(administrationMode: widget.administrationMode));
   }
 
   @override
   void didUpdateWidget(RoleAssignments oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.roleId != widget.roleId || oldWidget.editable != widget.editable) rebind();
+    if (oldWidget.roleId != widget.roleId ||
+        oldWidget.editable != widget.editable ||
+        oldWidget.administrationMode != widget.administrationMode) {
+      rebind();
+    }
   }
 
   @override

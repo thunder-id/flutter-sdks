@@ -136,3 +136,33 @@ class AccountLifecycleResult {
         emailSent: switch (data[AdministrationFlowData.emailSent]) { 'true' => true, 'false' => false, _ => null },
       );
 }
+
+/// An account lifecycle operation an operator can run. Locking is automatic only, so there is no
+/// lock.
+enum AccountLifecycleAction { suspend, unlock, unsuspend }
+
+/// A kind of identity the account lifecycle operations act on, with the `flow` server-config key
+/// that names the flow of each action it supports.
+enum AccountLifecycleSubjectKind {
+  agent({
+    AccountLifecycleAction.suspend: AdministrationFlowConfigKey.agentSuspend,
+    AccountLifecycleAction.unlock: AdministrationFlowConfigKey.agentUnlock,
+    AccountLifecycleAction.unsuspend: AdministrationFlowConfigKey.agentUnsuspend,
+  }),
+
+  /// Applications are never locked, so they have no unlock.
+  application({
+    AccountLifecycleAction.suspend: AdministrationFlowConfigKey.applicationSuspend,
+    AccountLifecycleAction.unsuspend: AdministrationFlowConfigKey.applicationUnsuspend,
+  }),
+  user({
+    AccountLifecycleAction.suspend: AdministrationFlowConfigKey.userSuspend,
+    AccountLifecycleAction.unlock: AdministrationFlowConfigKey.userUnlock,
+    AccountLifecycleAction.unsuspend: AdministrationFlowConfigKey.userUnsuspend,
+  });
+
+  /// The [AdministrationFlowConfigKey] of the flow behind each action this kind supports.
+  final Map<AccountLifecycleAction, String> flowConfigKeys;
+
+  const AccountLifecycleSubjectKind(this.flowConfigKeys);
+}

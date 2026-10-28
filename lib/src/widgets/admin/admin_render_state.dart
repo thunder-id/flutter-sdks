@@ -3,6 +3,7 @@
 
 import 'package:flutter/widgets.dart';
 
+import '../../models/management/administration.dart';
 import '../../models/management/agent.dart';
 import '../../models/management/application.dart';
 import '../../models/management/group.dart';
@@ -13,6 +14,9 @@ import 'user_create.dart';
 
 /// Builds custom UI for an admin widget from the state it hands over, in place of the default UI.
 typedef AdminWidgetBuilder<T> = Widget Function(BuildContext context, T state);
+
+/// Runs an account lifecycle action, with the operator's note on a suspension (`null` for none).
+typedef AccountLifecycleCallback = void Function(AccountLifecycleAction action, String? operatorNote);
 
 /// A search an admin list applies on the server: the attribute to match and the value it must equal.
 class AdminSearch {
@@ -338,6 +342,15 @@ class ApplicationDetailsState {
   /// Forgets [clientSecret]. `null` when there is none.
   final VoidCallback? onSecretDismissed;
 
+  /// The account lifecycle actions offered for the application, most expected first. Empty when none is
+  /// allowed.
+  final List<AccountLifecycleAction> lifecycleActions;
+
+  /// Runs an account lifecycle action. `null` when the actions are off. A custom UI must ask for
+  /// confirmation before suspending or unsuspending.
+  final AccountLifecycleCallback? onLifecycleAction;
+  final bool isRunningLifecycleAction;
+
   const ApplicationDetailsState({
     required this.application,
     required this.isLoading,
@@ -350,6 +363,9 @@ class ApplicationDetailsState {
     required this.onUpdate,
     required this.onRegenerateSecret,
     required this.onSecretDismissed,
+    this.lifecycleActions = const [],
+    this.onLifecycleAction,
+    this.isRunningLifecycleAction = false,
   });
 }
 
@@ -374,6 +390,15 @@ class UserDetailsState {
   /// Saves the given attributes. `null` when editing is not allowed, including for read-only users.
   final ValueChanged<Map<String, dynamic>>? onUpdate;
 
+  /// The account lifecycle actions offered for the user, most expected first. Empty when none is
+  /// allowed.
+  final List<AccountLifecycleAction> lifecycleActions;
+
+  /// Runs an account lifecycle action. `null` when the actions are off. A custom UI must ask for
+  /// confirmation before suspending or unsuspending.
+  final AccountLifecycleCallback? onLifecycleAction;
+  final bool isRunningLifecycleAction;
+
   const UserDetailsState({
     required this.user,
     required this.displayName,
@@ -385,6 +410,9 @@ class UserDetailsState {
     required this.isUpdating,
     required this.onDelete,
     required this.onUpdate,
+    this.lifecycleActions = const [],
+    this.onLifecycleAction,
+    this.isRunningLifecycleAction = false,
   });
 }
 
@@ -400,6 +428,15 @@ class AgentDetailsState {
   /// Deletes the agent. `null` when deletion is not allowed, including for read-only agents.
   final VoidCallback? onDelete;
 
+  /// The account lifecycle actions offered for the agent, most expected first. Empty when none is
+  /// allowed.
+  final List<AccountLifecycleAction> lifecycleActions;
+
+  /// Runs an account lifecycle action. `null` when the actions are off. A custom UI must ask for
+  /// confirmation before suspending or unsuspending.
+  final AccountLifecycleCallback? onLifecycleAction;
+  final bool isRunningLifecycleAction;
+
   const AgentDetailsState({
     required this.agent,
     required this.groups,
@@ -408,6 +445,9 @@ class AgentDetailsState {
     required this.error,
     required this.isDeleting,
     required this.onDelete,
+    this.lifecycleActions = const [],
+    this.onLifecycleAction,
+    this.isRunningLifecycleAction = false,
   });
 }
 

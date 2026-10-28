@@ -112,6 +112,9 @@ class AdminTextField extends StatefulWidget {
   /// More than one makes a multi-line field.
   final int maxLines;
 
+  /// The most characters the field accepts, with a counter. `null` for no limit.
+  final int? maxLength;
+
   const AdminTextField({
     super.key,
     required this.ac,
@@ -126,6 +129,7 @@ class AdminTextField extends StatefulWidget {
     this.onSubmitted,
     this.hint,
     this.maxLines = 1,
+    this.maxLength,
   });
 
   @override
@@ -159,6 +163,7 @@ class _AdminTextFieldState extends State<AdminTextField> {
           enabled: widget.enabled,
           obscureText: widget.obscureText,
           maxLines: widget.obscureText ? 1 : widget.maxLines,
+          maxLength: widget.maxLength,
           minLines: 1,
           keyboardType: widget.keyboardType ?? (widget.maxLines > 1 ? TextInputType.multiline : null),
           autocorrect: false,

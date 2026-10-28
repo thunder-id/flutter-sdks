@@ -26,6 +26,7 @@ const _detailUser = ManagedUser(
   ouHandle: 'default',
   type: 'customer',
   attributes: {'username': 'ada', 'email': 'ada@example.com', 'given_name': 'Ada', 'password': 'never shown'},
+  status: AccessStatus(value: AccessStatusValue.locked),
 );
 
 const _memberships = [
@@ -151,6 +152,7 @@ ${s.story == 'connected' ? 'GroupCreate(onCreated: (group) => open(group.id),' :
             ? UserDetails(
                 userId: s.text('userId'),
                 deletable: true,
+                lifecycleActions: true,
                 onDeleted: () => s.emit('onDeleted'),
                 builder: (context, details) => _UserCard(details: details),
               )
@@ -158,17 +160,22 @@ ${s.story == 'connected' ? 'GroupCreate(onCreated: (group) => open(group.id),' :
                 user: _detailUser,
                 groups: _memberships,
                 onDelete: () => s.emit('onDelete'),
+                lifecycleActions: const [AccountLifecycleAction.unlock, AccountLifecycleAction.suspend],
+                onLifecycleAction: (action, note) => s.emit('onLifecycleAction: ${action.name}'),
                 builder: (context, details) => _UserCard(details: details),
               ),
       );
     },
     code: (s) => '''
-${s.story == 'connected' ? "UserDetails(userId: '${s.text('userId')}', deletable: true," : 'BaseUserDetails(user: user, groups: groups, onDelete: () {},'}
+${s.story == 'connected' ? "UserDetails(userId: '${s.text('userId')}', deletable: true, lifecycleActions: true," : 'BaseUserDetails(user: user, groups: groups, onDelete: () {}, lifecycleActions: actions, onLifecycleAction: run,'}
   builder: (context, details) => Card(
     child: Column(children: [
-      ListTile(title: Text(details.displayName), subtitle: Text(details.user?.type ?? '')),
+      ListTile(title: Text(details.displayName), subtitle: Text(details.user?.status?.value ?? '')),
       for (final entry in details.attributes.entries) Text('\${entry.key}: \${entry.value}'),
       Wrap(children: [for (final group in details.groups) Chip(label: Text(group.name))]),
+      // Ask before suspending or unsuspending; an unlock can run straight away.
+      for (final action in details.lifecycleActions)
+        TextButton(onPressed: () => details.onLifecycleAction!(action, null), child: Text(action.name)),
       if (details.onDelete != null) TextButton(onPressed: details.onDelete, child: const Text('Delete')),
     ]),
   ),
@@ -468,11 +475,26 @@ class _UserCard extends StatelessWidget {
               contentPadding: EdgeInsets.zero,
               leading: CircleAvatar(child: Text(details.displayName.isEmpty ? '?' : details.displayName[0])),
               title: Text(details.displayName),
-              subtitle: Text(user == null ? '' : '${user.type} · ${user.ouHandle ?? user.ouId}'),
+              subtitle: Text(
+                user == null
+                    ? ''
+                    : [user.type, user.ouHandle ?? user.ouId, if (user.status != null) user.status!.value].join(' · '),
+              ),
             ),
             for (final entry in details.attributes.entries) Text('${entry.key}: ${entry.value}'),
             const SizedBox(height: 8),
             Wrap(spacing: 6, children: [for (final group in details.groups) Chip(label: Text(group.name))]),
+            if (details.lifecycleActions.isNotEmpty)
+              Wrap(
+                spacing: 6,
+                children: [
+                  for (final action in details.lifecycleActions)
+                    OutlinedButton(
+                      onPressed: details.isRunningLifecycleAction ? null : () => _runLifecycle(context, action),
+                      child: Text(action.name),
+                    ),
+                ],
+              ),
             if (details.onDelete != null)
               Align(
                 alignment: Alignment.centerRight,
@@ -482,5 +504,23 @@ class _UserCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// Unlocks straight away; asks before suspending or unsuspending, as the specification requires.
+  Future<void> _runLifecycle(BuildContext context, AccountLifecycleAction action) async {
+    final run = details.onLifecycleAction;
+    if (run == null) return;
+    if (action == AccountLifecycleAction.unlock) return run(action, null);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        content: Text('${action.name} ${details.displayName}?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: Text(action.name)),
+        ],
+      ),
+    );
+    if (confirmed == true) run(action, null);
   }
 }

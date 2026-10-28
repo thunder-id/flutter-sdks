@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import 'access_status.dart';
 import 'json_reader.dart';
 
 /// A user record administered through the management API.
@@ -20,6 +21,9 @@ class ManagedUser {
   final bool isReadOnly;
   final Map<String, dynamic> attributes;
 
+  /// The effective access status, set by the server on a read.
+  final AccessStatus? status;
+
   const ManagedUser({
     required this.id,
     required this.ouId,
@@ -28,6 +32,7 @@ class ManagedUser {
     this.display,
     this.isReadOnly = false,
     this.attributes = const {},
+    this.status,
   });
 
   factory ManagedUser.fromJson(Map<String, dynamic> json) => ManagedUser(
@@ -38,6 +43,7 @@ class ManagedUser {
         display: readOptionalString(json, 'display'),
         isReadOnly: readOptionalBool(json, 'isReadOnly') ?? false,
         attributes: readMap(json['attributes']),
+        status: AccessStatus.maybeFromJson(json['status']),
       );
 }
 

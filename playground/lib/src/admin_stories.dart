@@ -129,6 +129,20 @@ final _sampleApplication = Application.fromJson({
 const _states = ['data', 'loading', 'empty', 'forbidden'];
 const _detailStates = ['data', 'loading', 'forbidden'];
 
+const _accessStatuses = [AccessStatusValue.active, AccessStatusValue.locked, AccessStatusValue.suspended];
+
+const _administrationModes = ['native', 'flow'];
+
+AdministrationMode _mode(StoryContext s) =>
+    s.text('administrationMode') == 'flow' ? AdministrationMode.flow : AdministrationMode.native;
+
+/// The lifecycle actions a Base story offers for [status], as if the server configured every flow.
+List<AccountLifecycleAction> _sampleLifecycleActions(AccountLifecycleSubjectKind kind, String status) =>
+    getAccountLifecycleActions(kind, status, {for (final key in kind.flowConfigKeys.values) key: 'sample'});
+
+AccountLifecycleCallback _emitLifecycle(StoryContext s) =>
+    (action, note) => s.emit(note == null ? 'onLifecycleAction: ${action.name}' : 'onLifecycleAction: ${action.name}, $note');
+
 const _listDefaults = {'title': '', 'limit': '10', 'state': 'data'};
 const _connectedListControls = [ControlDef.text('title'), ControlDef.choice('limit', ['5', '10', '20'])];
 const _baseListControls = [ControlDef.text('title'), ControlDef.choice('state', _states)];
@@ -335,25 +349,58 @@ final List<ComponentDef> adminComponentDefs = [
     id: 'userDetails',
     name: 'UserDetails',
     category: 'Admin',
-    defaults: const {'userId': '', 'deletable': false, 'editable': true, 'state': 'data'},
-    controls: const [ControlDef.text('userId'), ControlDef.toggle('deletable'), ControlDef.toggle('editable')],
+    defaults: const {
+      'userId': '',
+      'deletable': false,
+      'editable': true,
+      'lifecycleActions': true,
+      'administrationMode': 'native',
+      'status': AccessStatusValue.locked,
+      'state': 'data',
+    },
+    controls: const [
+      ControlDef.text('userId'),
+      ControlDef.toggle('deletable'),
+      ControlDef.toggle('editable'),
+      ControlDef.toggle('lifecycleActions'),
+      ControlDef.choice('administrationMode', _administrationModes),
+    ],
     stories: const [
       StoryDef('connected', 'Connected'),
       StoryDef(
         'base',
         'Base (sample data)',
-        controls: [ControlDef.choice('state', _detailStates), ControlDef.toggle('deletable'), ControlDef.toggle('editable')],
+        controls: [
+          ControlDef.choice('state', _detailStates),
+          ControlDef.choice('status', _accessStatuses),
+          ControlDef.toggle('deletable'),
+          ControlDef.toggle('editable'),
+          ControlDef.toggle('lifecycleActions'),
+        ],
       ),
     ],
     build: (context, s) {
       if (s.story == 'base') {
+        final sample = _sampleUsers.first;
+        final status = s.text('status');
         return BaseUserDetails(
-          user: s.text('state') == 'data' ? _sampleUsers.first : null,
+          user: s.text('state') == 'data'
+              ? ManagedUser(
+                  id: sample.id,
+                  ouId: sample.ouId,
+                  ouHandle: sample.ouHandle,
+                  type: sample.type,
+                  attributes: sample.attributes,
+                  status: AccessStatus(value: status),
+                )
+              : null,
           groups: _sampleMemberships,
           isLoading: s.text('state') == 'loading',
           error: _error(context, s, 'admin.users.details.error'),
           onDelete: s.flag('deletable') ? () => s.emit('onDelete') : null,
           onUpdate: s.flag('editable') ? _emitWith(s, 'onUpdate', (a) => '${a.length} attributes') : null,
+          lifecycleActions: _sampleLifecycleActions(AccountLifecycleSubjectKind.user, status),
+          onLifecycleAction: s.flag('lifecycleActions') ? _emitLifecycle(s) : null,
           preferences: _prefs(s),
         );
       }
@@ -364,6 +411,8 @@ final List<ComponentDef> adminComponentDefs = [
         userId: userId,
         deletable: s.flag('deletable'),
         editable: s.flag('editable'),
+        lifecycleActions: s.flag('lifecycleActions'),
+        administrationMode: _mode(s),
         onDeleted: () => s.emit('onDeleted'),
         preferences: _prefs(s),
       );
@@ -375,11 +424,15 @@ final List<ComponentDef> adminComponentDefs = [
             _stateArgs(s, 'admin.users.details.error'),
             if (s.flag('deletable')) 'onDelete: () {}',
             if (s.flag('editable')) 'onUpdate: (attributes) {}',
+            if (s.flag('lifecycleActions')) 'lifecycleActions: lifecycleActions',
+            if (s.flag('lifecycleActions')) 'onLifecycleAction: (action, operatorNote) {}',
           ])
         : _snippet('UserDetails', [
             'userId: ${lit(_id(s, 'userId', 'user').isEmpty ? 'user-id' : _id(s, 'userId', 'user'))}',
             if (s.flag('deletable')) 'deletable: true',
             if (s.flag('editable')) 'editable: true',
+            if (s.flag('lifecycleActions')) 'lifecycleActions: true',
+            if (_mode(s) == AdministrationMode.flow) 'administrationMode: AdministrationMode.flow',
             'onDeleted: () {}',
           ]),
   ),
@@ -427,8 +480,12 @@ final List<ComponentDef> adminComponentDefs = [
     id: 'groupMembers',
     name: 'GroupMembers',
     category: 'Admin',
-    defaults: const {'groupId': '', 'editable': true, 'state': 'data'},
-    controls: const [ControlDef.text('groupId'), ControlDef.toggle('editable')],
+    defaults: const {'groupId': '', 'editable': true, 'administrationMode': 'native', 'state': 'data'},
+    controls: const [
+      ControlDef.text('groupId'),
+      ControlDef.toggle('editable'),
+      ControlDef.choice('administrationMode', _administrationModes),
+    ],
     stories: const [
       StoryDef('connected', 'Connected'),
       StoryDef('base', 'Base (sample data)', controls: [ControlDef.choice('state', _states), ControlDef.toggle('editable')]),
@@ -452,6 +509,7 @@ final List<ComponentDef> adminComponentDefs = [
         key: ValueKey('groupMembers/$groupId/${s.flag('editable')}'),
         groupId: groupId,
         editable: s.flag('editable'),
+        administrationMode: _mode(s),
         preferences: _prefs(s),
       );
     },
@@ -466,6 +524,7 @@ final List<ComponentDef> adminComponentDefs = [
         : _snippet('GroupMembers', [
             'groupId: ${lit(_id(s, 'groupId', 'group').isEmpty ? 'group-id' : _id(s, 'groupId', 'group'))}',
             if (s.flag('editable')) 'editable: true',
+            if (_mode(s) == AdministrationMode.flow) 'administrationMode: AdministrationMode.flow',
           ]),
   ),
   _list<Role>(
@@ -550,8 +609,12 @@ final List<ComponentDef> adminComponentDefs = [
     id: 'roleAssignments',
     name: 'RoleAssignments',
     category: 'Admin',
-    defaults: const {'roleId': '', 'editable': true, 'state': 'data'},
-    controls: const [ControlDef.text('roleId'), ControlDef.toggle('editable')],
+    defaults: const {'roleId': '', 'editable': true, 'administrationMode': 'native', 'state': 'data'},
+    controls: const [
+      ControlDef.text('roleId'),
+      ControlDef.toggle('editable'),
+      ControlDef.choice('administrationMode', _administrationModes),
+    ],
     stories: const [
       StoryDef('connected', 'Connected'),
       StoryDef('base', 'Base (sample data)', controls: [ControlDef.choice('state', _states), ControlDef.toggle('editable')]),
@@ -575,6 +638,7 @@ final List<ComponentDef> adminComponentDefs = [
         key: ValueKey('roleAssignments/$roleId/${s.flag('editable')}'),
         roleId: roleId,
         editable: s.flag('editable'),
+        administrationMode: _mode(s),
         preferences: _prefs(s),
       );
     },
@@ -589,6 +653,7 @@ final List<ComponentDef> adminComponentDefs = [
         : _snippet('RoleAssignments', [
             'roleId: ${lit(_id(s, 'roleId', 'role').isEmpty ? 'role-id' : _id(s, 'roleId', 'role'))}',
             if (s.flag('editable')) 'editable: true',
+            if (_mode(s) == AdministrationMode.flow) 'administrationMode: AdministrationMode.flow',
           ]),
   ),
   _list<Agent>(
@@ -639,16 +704,47 @@ final List<ComponentDef> adminComponentDefs = [
     id: 'agentDetails',
     name: 'AgentDetails',
     category: 'Admin',
-    defaults: const {'agentId': '', 'deletable': false, 'state': 'data'},
-    controls: const [ControlDef.text('agentId'), ControlDef.toggle('deletable')],
+    defaults: const {
+      'agentId': '',
+      'deletable': false,
+      'lifecycleActions': true,
+      'status': AccessStatusValue.active,
+      'state': 'data',
+    },
+    controls: const [ControlDef.text('agentId'), ControlDef.toggle('deletable'), ControlDef.toggle('lifecycleActions')],
     stories: const [
       StoryDef('connected', 'Connected'),
-      StoryDef('base', 'Base (sample data)', controls: [ControlDef.choice('state', _detailStates), ControlDef.toggle('deletable')]),
+      StoryDef(
+        'base',
+        'Base (sample data)',
+        controls: [
+          ControlDef.choice('state', _detailStates),
+          ControlDef.choice('status', _accessStatuses),
+          ControlDef.toggle('deletable'),
+          ControlDef.toggle('lifecycleActions'),
+        ],
+      ),
     ],
     build: (context, s) {
       if (s.story == 'base') {
+        final sample = _sampleAgents.first;
+        final status = s.text('status');
         return BaseAgentDetails(
-          agent: s.text('state') == 'data' ? _sampleAgents.first : null,
+          agent: s.text('state') == 'data'
+              ? Agent(
+                  id: sample.id,
+                  name: sample.name,
+                  ouId: sample.ouId,
+                  ouHandle: sample.ouHandle,
+                  type: sample.type,
+                  description: sample.description,
+                  clientId: sample.clientId,
+                  owner: sample.owner,
+                  status: AccessStatus(value: status),
+                )
+              : null,
+          lifecycleActions: _sampleLifecycleActions(AccountLifecycleSubjectKind.agent, status),
+          onLifecycleAction: s.flag('lifecycleActions') ? _emitLifecycle(s) : null,
           groups: _sampleMemberships.take(1).toList(),
           roles: const ['Administrator'],
           isLoading: s.text('state') == 'loading',
@@ -663,6 +759,7 @@ final List<ComponentDef> adminComponentDefs = [
         key: ValueKey('agentDetails/$agentId'),
         agentId: agentId,
         deletable: s.flag('deletable'),
+        lifecycleActions: s.flag('lifecycleActions'),
         onDeleted: () => s.emit('onDeleted'),
         preferences: _prefs(s),
       );
@@ -674,10 +771,13 @@ final List<ComponentDef> adminComponentDefs = [
             'roles: roleNames',
             _stateArgs(s, 'admin.agents.details.error'),
             if (s.flag('deletable')) 'onDelete: () {}',
+            if (s.flag('lifecycleActions')) 'lifecycleActions: lifecycleActions',
+            if (s.flag('lifecycleActions')) 'onLifecycleAction: (action, operatorNote) {}',
           ])
         : _snippet('AgentDetails', [
             'agentId: ${lit(_id(s, 'agentId', 'agent').isEmpty ? 'agent-id' : _id(s, 'agentId', 'agent'))}',
             if (s.flag('deletable')) 'deletable: true',
+            if (s.flag('lifecycleActions')) 'lifecycleActions: true',
             'onDeleted: () {}',
           ]),
   ),
@@ -732,6 +832,8 @@ final List<ComponentDef> adminComponentDefs = [
       'deletable': false,
       'editable': true,
       'secretRegenerable': false,
+      'lifecycleActions': true,
+      'administrationMode': 'native',
       'state': 'data',
     },
     controls: const [
@@ -739,6 +841,8 @@ final List<ComponentDef> adminComponentDefs = [
       ControlDef.toggle('deletable'),
       ControlDef.toggle('editable'),
       ControlDef.toggle('secretRegenerable'),
+      ControlDef.toggle('lifecycleActions'),
+      ControlDef.choice('administrationMode', _administrationModes),
     ],
     stories: const [
       StoryDef('connected', 'Connected'),
@@ -750,6 +854,7 @@ final List<ComponentDef> adminComponentDefs = [
           ControlDef.toggle('deletable'),
           ControlDef.toggle('editable'),
           ControlDef.toggle('secretRegenerable'),
+          ControlDef.toggle('lifecycleActions'),
         ],
       ),
     ],
@@ -762,6 +867,11 @@ final List<ComponentDef> adminComponentDefs = [
           onDelete: s.flag('deletable') ? () => s.emit('onDelete') : null,
           onUpdate: s.flag('editable') ? _emitWith(s, 'onUpdate', (e) => e.name) : null,
           onRegenerateSecret: s.flag('secretRegenerable') ? () => s.emit('onRegenerateSecret') : null,
+          lifecycleActions: _sampleLifecycleActions(
+            AccountLifecycleSubjectKind.application,
+            _sampleApplication.status?.value ?? AccessStatusValue.active,
+          ),
+          onLifecycleAction: s.flag('lifecycleActions') ? _emitLifecycle(s) : null,
           preferences: _prefs(s),
         );
       }
@@ -773,6 +883,8 @@ final List<ComponentDef> adminComponentDefs = [
         deletable: s.flag('deletable'),
         editable: s.flag('editable'),
         secretRegenerable: s.flag('secretRegenerable'),
+        lifecycleActions: s.flag('lifecycleActions'),
+        administrationMode: _mode(s),
         onDeleted: () => s.emit('onDeleted'),
         preferences: _prefs(s),
       );
@@ -784,12 +896,16 @@ final List<ComponentDef> adminComponentDefs = [
             if (s.flag('deletable')) 'onDelete: () {}',
             if (s.flag('editable')) 'onUpdate: (edit) {}',
             if (s.flag('secretRegenerable')) 'onRegenerateSecret: () {}',
+            if (s.flag('lifecycleActions')) 'lifecycleActions: lifecycleActions',
+            if (s.flag('lifecycleActions')) 'onLifecycleAction: (action, operatorNote) {}',
           ])
         : _snippet('ApplicationDetails', [
             'applicationId: ${lit(_id(s, 'applicationId', 'application').isEmpty ? 'application-id' : _id(s, 'applicationId', 'application'))}',
             if (s.flag('deletable')) 'deletable: true',
             if (s.flag('editable')) 'editable: true',
             if (s.flag('secretRegenerable')) 'secretRegenerable: true',
+            if (s.flag('lifecycleActions')) 'lifecycleActions: true',
+            if (_mode(s) == AdministrationMode.flow) 'administrationMode: AdministrationMode.flow',
             'onDeleted: () {}',
           ]),
   ),

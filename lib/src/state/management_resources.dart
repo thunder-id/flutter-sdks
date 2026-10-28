@@ -1,8 +1,11 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import '../management/account_lifecycle.dart';
+import '../management/administration_flows.dart';
 import '../management/management_transport.dart';
 import '../management/thunderid_management_client.dart';
+import '../models/management/administration.dart';
 import '../models/management/agent.dart';
 import '../models/management/application.dart';
 import '../models/management/group.dart';
@@ -28,6 +31,7 @@ abstract final class ManagementQueryKeys {
   static const String agentTypes = 'agent-types';
   static const String application = 'application';
   static const String applications = 'applications';
+  static const String administrationFlows = 'administration-flows';
 }
 
 /// Variables of [ManagementResources.updateUserMutation].
@@ -50,6 +54,10 @@ typedef UpdateAgentVariables = ({String agentId, UpdateAgentRequest data});
 
 /// Variables of [ManagementResources.updateApplicationMutation].
 typedef UpdateApplicationVariables = ({String applicationId, UpdateApplicationRequest data});
+
+/// Variables of [ManagementResources.accountLifecycleMutation]: the identity, the action, and the
+/// operator's optional note.
+typedef AccountLifecycleVariables = ({String subject, AccountLifecycleAction action, String? operatorNote});
 
 /// The state layer over [ThunderIDManagementClient]: each method returns a [ResourceQuery] or
 /// [ResourceMutation] for one management operation, the Flutter counterpart of the React SDK's
@@ -158,13 +166,15 @@ class ManagementResources {
         onError,
       );
 
+  /// Deletes a user. [administrationMode] picks how (see [ThunderIDManagementClient.deleteUser]).
   ResourceMutation<String, void> deleteUserMutation({
     void Function(void data, String userId)? onSuccess,
     void Function(Object error, String userId)? onError,
+    AdministrationMode administrationMode = AdministrationMode.native,
     ManagementFetcher? fetcher,
   }) =>
       _mutation(
-        (String userId) => client.deleteUser(userId, fetcher: fetcher),
+        (String userId) => client.deleteUser(userId, administrationMode: administrationMode, fetcher: fetcher),
         (_) => [
           [ManagementQueryKeys.users],
         ],
@@ -264,13 +274,21 @@ class ManagementResources {
         onError,
       );
 
+  /// Removes group members. [administrationMode] picks how (see
+  /// [ThunderIDManagementClient.removeGroupMembers]).
   ResourceMutation<GroupMembersVariables, Group?> removeGroupMembersMutation({
     void Function(Group? data, GroupMembersVariables variables)? onSuccess,
     void Function(Object error, GroupMembersVariables variables)? onError,
+    AdministrationMode administrationMode = AdministrationMode.native,
     ManagementFetcher? fetcher,
   }) =>
       _mutation(
-        (GroupMembersVariables v) => client.removeGroupMembers(v.groupId, v.members, fetcher: fetcher),
+        (GroupMembersVariables v) => client.removeGroupMembers(
+          v.groupId,
+          v.members,
+          administrationMode: administrationMode,
+          fetcher: fetcher,
+        ),
         _groupMembershipKeys,
         onSuccess,
         onError,
@@ -380,13 +398,21 @@ class ManagementResources {
         onError,
       );
 
+  /// Removes role assignments. [administrationMode] picks how (see
+  /// [ThunderIDManagementClient.removeRoleAssignments]).
   ResourceMutation<RoleAssignmentsVariables, void> removeRoleAssignmentsMutation({
     void Function(void data, RoleAssignmentsVariables variables)? onSuccess,
     void Function(Object error, RoleAssignmentsVariables variables)? onError,
+    AdministrationMode administrationMode = AdministrationMode.native,
     ManagementFetcher? fetcher,
   }) =>
       _mutation(
-        (RoleAssignmentsVariables v) => client.removeRoleAssignments(v.roleId, v.assignments, fetcher: fetcher),
+        (RoleAssignmentsVariables v) => client.removeRoleAssignments(
+          v.roleId,
+          v.assignments,
+          administrationMode: administrationMode,
+          fetcher: fetcher,
+        ),
         (_) => [
           [ManagementQueryKeys.roleAssignments],
         ],
@@ -550,13 +576,20 @@ class ManagementResources {
         onError,
       );
 
+  /// Deletes an application. [administrationMode] picks how (see
+  /// [ThunderIDManagementClient.deleteApplication]).
   ResourceMutation<String, void> deleteApplicationMutation({
     void Function(void data, String applicationId)? onSuccess,
     void Function(Object error, String applicationId)? onError,
+    AdministrationMode administrationMode = AdministrationMode.native,
     ManagementFetcher? fetcher,
   }) =>
       _mutation(
-        (String applicationId) => client.deleteApplication(applicationId, fetcher: fetcher),
+        (String applicationId) => client.deleteApplication(
+          applicationId,
+          administrationMode: administrationMode,
+          fetcher: fetcher,
+        ),
         (_) => [
           [ManagementQueryKeys.applications],
           [ManagementQueryKeys.roleAssignments],
@@ -566,17 +599,75 @@ class ManagementResources {
       );
 
   /// Regenerates an application's client secret. The new secret is in the result's
-  /// `clientSecret`, readable only there.
+  /// `clientSecret`, readable only there. [administrationMode] picks how (see
+  /// [ThunderIDManagementClient.regenerateClientSecret]).
   ResourceMutation<String, RegenerateClientSecretResult> regenerateClientSecretMutation({
     void Function(RegenerateClientSecretResult data, String applicationId)? onSuccess,
     void Function(Object error, String applicationId)? onError,
+    AdministrationMode administrationMode = AdministrationMode.native,
     ManagementFetcher? fetcher,
   }) =>
       _mutation(
-        (String applicationId) => client.regenerateClientSecret(applicationId, fetcher: fetcher),
+        (String applicationId) => client.regenerateClientSecret(
+          applicationId,
+          administrationMode: administrationMode,
+          fetcher: fetcher,
+        ),
         (String applicationId) => [
           [ManagementQueryKeys.application, applicationId],
         ],
+        onSuccess,
+        onError,
+      );
+
+  // ── Account lifecycle ───────────────────────────────────────────────────
+
+  /// The account lifecycle flows the server configures for [kind], keyed by `flow` server-config
+  /// key (see [AccountLifecycleSubjectKind.flowConfigKeys]). Pass the result to
+  /// [getAccountLifecycleActions]. Reading it needs a token that may read the server
+  /// configuration.
+  ResourceQuery<Map<String, String>> accountLifecycleFlowsQuery(
+    AccountLifecycleSubjectKind kind, {
+    bool enabled = true,
+    ManagementFetcher? fetcher,
+  }) =>
+      _query(
+        [ManagementQueryKeys.administrationFlows, 'account-lifecycle', kind.name],
+        () => client.resolveAdministrationFlows(kind.flowConfigKeys.values.toList(), fetcher: fetcher),
+        enabled,
+      );
+
+  /// Suspends, unsuspends or unlocks an identity of [kind] through its administration flow (see
+  /// [AccountLifecycleOperations.runAccountLifecycleAction]), then reloads the identity and its
+  /// list.
+  ResourceMutation<AccountLifecycleVariables, AccountLifecycleResult> accountLifecycleMutation(
+    AccountLifecycleSubjectKind kind, {
+    void Function(AccountLifecycleResult data, AccountLifecycleVariables variables)? onSuccess,
+    void Function(Object error, AccountLifecycleVariables variables)? onError,
+    ManagementFetcher? fetcher,
+  }) =>
+      _mutation(
+        (AccountLifecycleVariables v) => client.runAccountLifecycleAction(
+          kind,
+          v.action,
+          v.subject,
+          operatorNote: v.operatorNote,
+          fetcher: fetcher,
+        ),
+        (AccountLifecycleVariables v) => switch (kind) {
+          AccountLifecycleSubjectKind.user => [
+              [ManagementQueryKeys.user, v.subject],
+              [ManagementQueryKeys.users],
+            ],
+          AccountLifecycleSubjectKind.agent => [
+              [ManagementQueryKeys.agent, v.subject],
+              [ManagementQueryKeys.agents],
+            ],
+          AccountLifecycleSubjectKind.application => [
+              [ManagementQueryKeys.application, v.subject],
+              [ManagementQueryKeys.applications],
+            ],
+        },
         onSuccess,
         onError,
       );

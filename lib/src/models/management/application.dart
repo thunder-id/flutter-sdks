@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import 'access_status.dart';
 import 'json_reader.dart';
 
 // Applications administered through the management API. Every model reads leniently: a field of
@@ -646,11 +647,16 @@ class Application extends ApplicationRequest {
   final String? createdAt;
   final String? updatedAt;
 
+  /// The effective access status, set by the server on a read. Applications are never locked.
+  /// It is never sent back in a write.
+  final AccessStatus? status;
+
   const Application({
     required this.id,
     required super.name,
     this.createdAt,
     this.updatedAt,
+    this.status,
     super.description,
     super.url,
     super.logoUrl,
@@ -686,6 +692,7 @@ class Application extends ApplicationRequest {
       id: readString(json, 'id'),
       createdAt: readOptionalString(json, 'createdAt'),
       updatedAt: readOptionalString(json, 'updatedAt'),
+      status: AccessStatus.maybeFromJson(json['status']),
       name: fields.name,
       description: fields.description,
       url: fields.url,
@@ -713,7 +720,8 @@ class Application extends ApplicationRequest {
       attestation: fields.attestation,
       passkeyAllowedOrigins: fields.passkeyAllowedOrigins,
       isReadOnly: fields.isReadOnly,
-      additionalFields: fields.additionalFields,
+      // The server computes the status and refuses it on a write, so it is not kept to send back.
+      additionalFields: Map.of(fields.additionalFields)..remove('status'),
     );
   }
 

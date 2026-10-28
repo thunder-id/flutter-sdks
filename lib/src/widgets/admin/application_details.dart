@@ -7,24 +7,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../management/management_display.dart';
+import '../../models/management/administration.dart';
 import '../../models/management/application.dart';
 import '../../models/preferences.dart';
 import '../../state/management_resources.dart';
 import '../../state/resource_notifiers.dart';
 import 'admin_render_state.dart';
 import 'identity_candidate.dart';
+import 'internal/account_lifecycle_parts.dart';
 import 'internal/admin_connected.dart';
 import 'internal/admin_context.dart';
 import 'internal/admin_inputs.dart';
 import 'internal/admin_parts.dart';
 import 'internal/application_form.dart';
-
-/// The application's status value, such as `ACTIVE`, when the server reported one.
-String? _statusOf(Application application) {
-  final status = application.additionalFields['status'];
-  final value = status is Map ? status['value'] : null;
-  return value is String ? value : null;
-}
 
 String? _clientIdOf(Application application) {
   final fromConfig = application.oauth2Config?.clientId;
@@ -38,7 +33,10 @@ String? _clientIdOf(Application application) {
 /// Edit, delete and regenerate secret appear only when [onUpdate], [onDelete] and
 /// [onRegenerateSecret] are set, and never for a read-only application; regenerate also needs a
 /// confidential OAuth client. Delete and regenerate ask for confirmation first (spec "UI",
-/// requirement 6). While [clientSecret] is set it is shown once, with copy and done actions.
+/// requirement 6). While [clientSecret] is set it is shown once, with copy and done actions. The
+/// account lifecycle actions in [lifecycleActions] (suspend and unsuspend; applications are never
+/// locked) appear only when [onLifecycleAction] is set; they change only runtime state, so they
+/// apply to read-only applications too.
 class BaseApplicationDetails extends StatefulWidget {
   final Application? application;
   final bool isLoading;
@@ -55,10 +53,18 @@ class BaseApplicationDetails extends StatefulWidget {
   /// A newly regenerated client secret to show once.
   final String? clientSecret;
   final VoidCallback? onSecretDismissed;
+
+  /// The account lifecycle actions to offer (suspend, unsuspend), shown only with
+  /// [onLifecycleAction].
+  final List<AccountLifecycleAction> lifecycleActions;
+
+  /// Runs an account lifecycle action. Suspending and unsuspending ask for confirmation first.
+  final AccountLifecycleCallback? onLifecycleAction;
+  final bool isRunningLifecycleAction;
   final List<Widget> actions;
   final ThunderIDPreferences? preferences;
 
-  /// Builds custom UI in place of the default view, from the application, the loading and error state, the secret to show once, and the update, delete and regenerate callbacks the app allows.
+  /// Builds custom UI in place of the default view, from the application, the loading and error state, the secret to show once, and the update, delete, regenerate and lifecycle callbacks the app allows.
   final AdminWidgetBuilder<ApplicationDetailsState>? builder;
 
   const BaseApplicationDetails({
@@ -74,6 +80,9 @@ class BaseApplicationDetails extends StatefulWidget {
     this.isRegeneratingSecret = false,
     this.clientSecret,
     this.onSecretDismissed,
+    this.lifecycleActions = const [],
+    this.onLifecycleAction,
+    this.isRunningLifecycleAction = false,
     this.actions = const [],
     this.preferences,
     this.builder,
@@ -139,6 +148,10 @@ class _BaseApplicationDetailsState extends State<BaseApplicationDetails> {
           onUpdate: onUpdate,
           onRegenerateSecret: onRegenerate,
           onSecretDismissed: widget.clientSecret == null ? null : widget.onSecretDismissed,
+          lifecycleActions:
+              widget.onLifecycleAction != null && application != null ? widget.lifecycleActions : const [],
+          onLifecycleAction: application != null ? widget.onLifecycleAction : null,
+          isRunningLifecycleAction: widget.isRunningLifecycleAction,
         ),
       );
     }
@@ -160,9 +173,10 @@ class _BaseApplicationDetailsState extends State<BaseApplicationDetails> {
     }
 
     final clientId = _clientIdOf(application);
-    final status = _statusOf(application);
+    final status = application.status?.value;
     final secret = widget.clientSecret;
     final draft = _draft;
+    final onLifecycleAction = widget.onLifecycleAction;
 
     return AdminSection(
       ac: ac,
@@ -171,6 +185,15 @@ class _BaseApplicationDetailsState extends State<BaseApplicationDetails> {
       description: application.description,
       actions: [
         ...widget.actions,
+        if (onLifecycleAction != null && widget.lifecycleActions.isNotEmpty)
+          AdminLifecycleButtons(
+            ac: ac,
+            actions: widget.lifecycleActions,
+            name: application.name,
+            block: 'application-details',
+            onAction: onLifecycleAction,
+            isRunning: widget.isRunningLifecycleAction,
+          ),
         if (onUpdate != null && draft == null)
           AdminButton(
             ac: ac,
@@ -239,7 +262,10 @@ class _BaseApplicationDetailsState extends State<BaseApplicationDetails> {
                 if (application.template != null)
                   (ac.t('admin.applications.details.template'), Text(application.template!)),
                 if (status != null)
-                  (ac.t('admin.applications.list.columns.status'), Text(applicationStatusLabel(ac, status))),
+                  (
+                    ac.t('admin.common.columns.status'),
+                    Align(alignment: Alignment.centerLeft, child: AdminAccessStatusLabel(ac: ac, status: status)),
+                  ),
                 if (application.ouId != null)
                   (ac.t('admin.common.columns.organization_unit'), Text(application.ouId!)),
                 if (application.url != null) (ac.t('admin.applications.fields.url'), Text(application.url!)),
@@ -401,13 +427,25 @@ class _BaseApplicationDetailsState extends State<BaseApplicationDetails> {
 ///
 /// Changing data is off by default: set [editable] to offer editing the general fields and the
 /// OAuth redirect URIs and grant types, [deletable] to offer delete, and [secretRegenerable] to
-/// offer regenerating the client secret (both with confirmation; the new secret is shown once).
-/// The server guards applications with the root `system` permission.
+/// offer regenerating the client secret (both with confirmation; the new secret is shown once),
+/// and [lifecycleActions] to offer suspend and unsuspend. The server guards applications with the
+/// root `system` permission.
 class ApplicationDetails extends StatefulWidget {
   final String applicationId;
   final bool deletable;
   final bool editable;
   final bool secretRegenerable;
+
+  /// Whether the application can be suspended and unsuspended from this view. Each action runs
+  /// through its administration flow and is offered only when the application's status allows it
+  /// and the server configures that flow. The configured flows are read only while this is on,
+  /// and reading them needs a token that may read the server configuration.
+  final bool lifecycleActions;
+
+  /// How the delete and the client secret regeneration run. [AdministrationMode.flow] runs the
+  /// administration flow the server configures for each, which can revoke grants and end
+  /// sessions first.
+  final AdministrationMode administrationMode;
   final VoidCallback? onDeleted;
   final List<Widget> actions;
   final ThunderIDPreferences? preferences;
@@ -421,6 +459,8 @@ class ApplicationDetails extends StatefulWidget {
     this.deletable = false,
     this.editable = false,
     this.secretRegenerable = false,
+    this.lifecycleActions = false,
+    this.administrationMode = AdministrationMode.native,
     this.onDeleted,
     this.actions = const [],
     this.preferences,
@@ -436,19 +476,35 @@ class _ApplicationDetailsState extends AdminConnectedState<ApplicationDetails> {
   ResourceMutation<String, void>? _delete;
   ResourceMutation<UpdateApplicationVariables, Application>? _update;
   ResourceMutation<String, RegenerateClientSecretResult>? _regenerate;
+  AdminLifecycleBinding? _lifecycle;
 
   @override
   void bind(ManagementResources resources) {
     _application = own(resources.applicationQuery(widget.applicationId));
-    _delete = own(resources.deleteApplicationMutation(onSuccess: (_, __) => widget.onDeleted?.call()));
+    _delete = own(
+      resources.deleteApplicationMutation(
+        administrationMode: widget.administrationMode,
+        onSuccess: (_, __) => widget.onDeleted?.call(),
+      ),
+    );
     _update = own(resources.updateApplicationMutation());
-    _regenerate = own(resources.regenerateClientSecretMutation());
+    _regenerate = own(resources.regenerateClientSecretMutation(administrationMode: widget.administrationMode));
+    _lifecycle = AdminLifecycleBinding(
+      resources,
+      AccountLifecycleSubjectKind.application,
+      enabled: widget.lifecycleActions,
+      own: own,
+    );
   }
 
   @override
   void didUpdateWidget(ApplicationDetails oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.applicationId != widget.applicationId) rebind();
+    if (oldWidget.applicationId != widget.applicationId ||
+        oldWidget.lifecycleActions != widget.lifecycleActions ||
+        oldWidget.administrationMode != widget.administrationMode) {
+      rebind();
+    }
   }
 
   @override
@@ -458,6 +514,7 @@ class _ApplicationDetailsState extends AdminConnectedState<ApplicationDetails> {
     final delete = _delete;
     final update = _update;
     final regenerate = _regenerate;
+    final lifecycle = _lifecycle;
     return BaseApplicationDetails(
       application: application,
       isLoading: _application?.isLoading ?? !providerFailed,
@@ -466,7 +523,8 @@ class _ApplicationDetailsState extends AdminConnectedState<ApplicationDetails> {
           : toManagementErrorMessage(ac.t, _application?.error, 'admin.applications.details.error') ??
               toManagementErrorMessage(ac.t, delete?.error, 'admin.applications.details.delete.error') ??
               toManagementErrorMessage(ac.t, update?.error, 'admin.applications.details.edit.error') ??
-              toManagementErrorMessage(ac.t, regenerate?.error, 'admin.applications.details.regenerate.error'),
+              toManagementErrorMessage(ac.t, regenerate?.error, 'admin.applications.details.regenerate.error') ??
+              lifecycle?.error(ac),
       isDeleting: delete?.isLoading ?? false,
       onDelete: widget.deletable && delete != null ? () => unawaited(delete.mutate(widget.applicationId)) : null,
       isUpdating: update?.isLoading ?? false,
@@ -481,6 +539,9 @@ class _ApplicationDetailsState extends AdminConnectedState<ApplicationDetails> {
           : null,
       clientSecret: regenerate?.data?.clientSecret,
       onSecretDismissed: regenerate?.reset,
+      lifecycleActions: lifecycle?.actions(application?.status?.value) ?? const [],
+      onLifecycleAction: lifecycle?.handler(widget.applicationId),
+      isRunningLifecycleAction: lifecycle?.isRunning ?? false,
       actions: widget.actions,
       preferences: widget.preferences,
       builder: widget.builder,

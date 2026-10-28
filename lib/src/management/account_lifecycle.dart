@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import '../models/management/access_status.dart';
 import '../models/management/administration.dart';
 import '../models/thunderid_error.dart';
 import 'administration_flows.dart';
@@ -18,6 +19,42 @@ import 'thunderid_management_client.dart';
 /// example `suspendUser-NotConfiguredError-001`) and nothing changes. Like every administration
 /// flow, they read the server at [ThunderIDManagementClient.baseUrl].
 extension AccountLifecycleOperations on ThunderIDManagementClient {
+  /// Runs [action] against the [kind] of identity [subject], through the operation for that kind
+  /// and action (for example [suspendUser]). Each raises its own errors, so a missing flow fails
+  /// with that operation's `NotConfiguredError`. An action that does not apply to the kind, such
+  /// as unlocking an application, raises [ThunderIDErrorCode.invalidInput] before anything is sent.
+  Future<AccountLifecycleResult> runAccountLifecycleAction(
+    AccountLifecycleSubjectKind kind,
+    AccountLifecycleAction action,
+    String subject, {
+    String? operatorNote,
+    ManagementFetcher? fetcher,
+  }) =>
+      switch ((kind, action)) {
+        (AccountLifecycleSubjectKind.user, AccountLifecycleAction.suspend) =>
+          suspendUser(subject, operatorNote: operatorNote, fetcher: fetcher),
+        (AccountLifecycleSubjectKind.user, AccountLifecycleAction.unsuspend) =>
+          unsuspendUser(subject, operatorNote: operatorNote, fetcher: fetcher),
+        (AccountLifecycleSubjectKind.user, AccountLifecycleAction.unlock) =>
+          unlockUser(subject, operatorNote: operatorNote, fetcher: fetcher),
+        (AccountLifecycleSubjectKind.agent, AccountLifecycleAction.suspend) =>
+          suspendAgent(subject, operatorNote: operatorNote, fetcher: fetcher),
+        (AccountLifecycleSubjectKind.agent, AccountLifecycleAction.unsuspend) =>
+          unsuspendAgent(subject, operatorNote: operatorNote, fetcher: fetcher),
+        (AccountLifecycleSubjectKind.agent, AccountLifecycleAction.unlock) =>
+          unlockAgent(subject, operatorNote: operatorNote, fetcher: fetcher),
+        (AccountLifecycleSubjectKind.application, AccountLifecycleAction.suspend) =>
+          suspendApplication(subject, operatorNote: operatorNote, fetcher: fetcher),
+        (AccountLifecycleSubjectKind.application, AccountLifecycleAction.unsuspend) =>
+          unsuspendApplication(subject, operatorNote: operatorNote, fetcher: fetcher),
+        (AccountLifecycleSubjectKind.application, AccountLifecycleAction.unlock) => Future.error(
+            const IAMException(
+              ThunderIDErrorCode.invalidInput,
+              'runAccountLifecycleAction: the unlock action does not apply to applications, which are never locked.',
+            ),
+          ),
+      };
+
   /// Suspends [userId]: they cannot sign in until unsuspended.
   Future<AccountLifecycleResult> suspendUser(String userId, {String? operatorNote, ManagementFetcher? fetcher}) =>
       _run('suspendUser', AdministrationFlowConfigKey.userSuspend, 'user suspension', userId, operatorNote, fetcher);
@@ -103,3 +140,32 @@ extension AccountLifecycleOperations on ThunderIDManagementClient {
     return AccountLifecycleResult.fromFlowData(data);
   }
 }
+
+/// The actions each status offers, most expected first. A suspended identity offers no unlock,
+/// since a read does not show a lock beneath the suspension: once unsuspended, a remaining lock
+/// shows as [AccessStatusValue.locked].
+const Map<String, List<AccountLifecycleAction>> _actionsByStatus = {
+  AccessStatusValue.active: [AccountLifecycleAction.suspend],
+  AccessStatusValue.locked: [AccountLifecycleAction.unlock, AccountLifecycleAction.suspend],
+  AccessStatusValue.suspended: [AccountLifecycleAction.unsuspend],
+};
+
+/// The account lifecycle actions to offer for an identity: those its [status] allows, that apply
+/// to its [kind], and whose administration flow is configured. These actions run only through
+/// their flows, so one with no flow is never offered.
+///
+/// [status] is the identity's [AccessStatus.value]; an identity with none reads as
+/// [AccessStatusValue.active], and a status this SDK does not know offers nothing.
+/// [configuredFlows] are the flows the server configures, keyed by `flow` server-config key, as
+/// [AdministrationFlowOperations.resolveAdministrationFlows] returns them for
+/// `kind.flowConfigKeys.values`. Returns the actions most expected first.
+List<AccountLifecycleAction> getAccountLifecycleActions(
+  AccountLifecycleSubjectKind kind,
+  String? status,
+  Map<String, String> configuredFlows,
+) =>
+    [
+      for (final action in _actionsByStatus[status ?? AccessStatusValue.active] ?? const <AccountLifecycleAction>[])
+        if (kind.flowConfigKeys[action] case final configKey? when (configuredFlows[configKey] ?? '').isNotEmpty)
+          action,
+    ];
