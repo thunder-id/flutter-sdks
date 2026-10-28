@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../management/management_display.dart';
 import '../../management/management_filter.dart';
+import '../../models/management/administration.dart';
 import '../../models/management/agent.dart';
 import '../../models/management/group.dart';
 import '../../models/management/managed_user.dart';
@@ -176,6 +177,10 @@ class RoleAssignments extends StatefulWidget {
   final String roleId;
   final bool editable;
 
+  /// How an assignment is removed. [AdministrationMode.flow] runs the assignment removal flow the
+  /// server configures, which can revoke grants and end sessions first.
+  final AdministrationMode administrationMode;
+
   /// Whether to show the assignee type filter, which narrows the list on the server.
   final bool filterable;
 
@@ -192,6 +197,7 @@ class RoleAssignments extends StatefulWidget {
     super.key,
     required this.roleId,
     this.editable = false,
+    this.administrationMode = AdministrationMode.native,
     this.filterable = true,
     this.ouId,
     this.title,
@@ -224,14 +230,17 @@ class _RoleAssignmentsState extends AdminConnectedState<RoleAssignments> {
     _groups = own(resources.groupsQuery(filter: filter, limit: 100, enabled: listCandidates));
     _agents = own(resources.agentsQuery(filter: filter, limit: 100, enabled: listCandidates));
     _assign = own(resources.addRoleAssignmentsMutation());
-    _unassign = own(resources.removeRoleAssignmentsMutation());
+    _unassign = own(resources.removeRoleAssignmentsMutation(administrationMode: widget.administrationMode));
   }
 
   @override
   void didUpdateWidget(RoleAssignments oldWidget) {
     super.didUpdateWidget(oldWidget);
     // New queries start with no data, so no candidate from the previous organization unit is offered.
-    if (oldWidget.roleId != widget.roleId || oldWidget.editable != widget.editable || oldWidget.ouId != widget.ouId) {
+    if (oldWidget.roleId != widget.roleId ||
+        oldWidget.editable != widget.editable ||
+        oldWidget.ouId != widget.ouId ||
+        oldWidget.administrationMode != widget.administrationMode) {
       rebind();
     }
   }

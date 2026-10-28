@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import 'access_status.dart';
 import 'json_reader.dart';
 
 /// An agent record administered through the management API.
@@ -30,6 +31,9 @@ class Agent {
   /// Inbound authentication configuration exactly as the server returned it.
   final List<Map<String, dynamic>> inboundAuthConfig;
 
+  /// The effective access status, set by the server on a read.
+  final AccessStatus? status;
+
   const Agent({
     required this.id,
     required this.name,
@@ -48,6 +52,7 @@ class Agent {
     this.registrationFlowId,
     this.isRegistrationFlowEnabled,
     this.inboundAuthConfig = const [],
+    this.status,
   });
 
   factory Agent.fromJson(Map<String, dynamic> json) => Agent(
@@ -68,6 +73,7 @@ class Agent {
         registrationFlowId: readOptionalString(json, 'registrationFlowId'),
         isRegistrationFlowEnabled: readOptionalBool(json, 'isRegistrationFlowEnabled'),
         inboundAuthConfig: readList(json, 'inboundAuthConfig').map(readMap).toList(growable: false),
+        status: AccessStatus.maybeFromJson(json['status']),
       );
 }
 

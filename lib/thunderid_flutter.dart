@@ -34,6 +34,7 @@ export 'src/management/variables.dart';
 export 'src/models/backend.dart';
 export 'src/models/flow_models.dart' hide KeyValuePair;
 export 'src/models/http_request.dart';
+export 'src/models/management/access_status.dart';
 export 'src/models/management/administration.dart';
 export 'src/models/management/agent.dart';
 export 'src/models/management/application.dart';

@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 
 import '../../management/management_display.dart';
+import '../../models/management/administration.dart';
 import '../../models/management/agent.dart';
 import '../../models/management/group.dart';
 import '../../models/management/managed_user.dart';
@@ -136,6 +137,10 @@ class BaseGroupMembers extends StatelessWidget {
 class GroupMembers extends StatefulWidget {
   final String groupId;
   final bool editable;
+
+  /// How a member is removed. [AdministrationMode.flow] runs the membership removal flow the
+  /// server configures, which can revoke grants and end sessions first.
+  final AdministrationMode administrationMode;
   final String? title;
   final String? description;
   final ThunderIDPreferences? preferences;
@@ -147,6 +152,7 @@ class GroupMembers extends StatefulWidget {
     super.key,
     required this.groupId,
     this.editable = false,
+    this.administrationMode = AdministrationMode.native,
     this.title,
     this.description,
     this.preferences,
@@ -170,13 +176,17 @@ class _GroupMembersState extends AdminConnectedState<GroupMembers> {
     _users = own(resources.usersQuery(limit: 100, enabled: widget.editable));
     _agents = own(resources.agentsQuery(limit: 100, enabled: widget.editable));
     _add = own(resources.addGroupMembersMutation());
-    _remove = own(resources.removeGroupMembersMutation());
+    _remove = own(resources.removeGroupMembersMutation(administrationMode: widget.administrationMode));
   }
 
   @override
   void didUpdateWidget(GroupMembers oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.groupId != widget.groupId || oldWidget.editable != widget.editable) rebind();
+    if (oldWidget.groupId != widget.groupId ||
+        oldWidget.editable != widget.editable ||
+        oldWidget.administrationMode != widget.administrationMode) {
+      rebind();
+    }
   }
 
   @override

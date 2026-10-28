@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../management/management_display.dart';
+import '../../models/management/administration.dart';
 import '../../models/management/agent.dart';
 import '../../models/management/group.dart';
 import '../../models/management/management_page.dart';
@@ -14,6 +15,7 @@ import '../../models/preferences.dart';
 import '../../state/management_resources.dart';
 import '../../state/resource_notifiers.dart';
 import 'admin_render_state.dart';
+import 'internal/account_lifecycle_parts.dart';
 import 'internal/admin_connected.dart';
 import 'internal/admin_context.dart';
 import 'internal/admin_inputs.dart';
@@ -22,7 +24,9 @@ import 'internal/admin_parts.dart';
 /// Presentational view of one agent: overview, group memberships, and roles.
 ///
 /// Delete appears only when [onDelete] is set, and never for a read-only agent. It asks for
-/// confirmation first (spec "UI", requirement 6).
+/// confirmation first (spec "UI", requirement 6). The account lifecycle actions in
+/// [lifecycleActions] appear only when [onLifecycleAction] is set; they change only runtime
+/// state, so they apply to read-only agents too.
 class BaseAgentDetails extends StatelessWidget {
   final Agent? agent;
   final List<MembershipGroup> groups;
@@ -35,10 +39,19 @@ class BaseAgentDetails extends StatelessWidget {
   final String? error;
   final VoidCallback? onDelete;
   final bool isDeleting;
+
+  /// The account lifecycle actions to offer (suspend, unsuspend, unlock), shown only with
+  /// [onLifecycleAction].
+  final List<AccountLifecycleAction> lifecycleActions;
+
+  /// Runs an account lifecycle action. Suspending and unsuspending ask for confirmation first,
+  /// and a suspension takes an optional operator note.
+  final AccountLifecycleCallback? onLifecycleAction;
+  final bool isRunningLifecycleAction;
   final List<Widget> actions;
   final ThunderIDPreferences? preferences;
 
-  /// Builds custom UI in place of the default view, from the agent, its groups and roles, the loading and error state, and the delete callback.
+  /// Builds custom UI in place of the default view, from the agent, its groups and roles, the loading and error state, and the delete and lifecycle callbacks.
   final AdminWidgetBuilder<AgentDetailsState>? builder;
 
   const BaseAgentDetails({
@@ -50,6 +63,9 @@ class BaseAgentDetails extends StatelessWidget {
     this.error,
     this.onDelete,
     this.isDeleting = false,
+    this.lifecycleActions = const [],
+    this.onLifecycleAction,
+    this.isRunningLifecycleAction = false,
     this.actions = const [],
     this.preferences,
     this.builder,
@@ -71,6 +87,9 @@ class BaseAgentDetails extends StatelessWidget {
           error: error,
           isDeleting: isDeleting,
           onDelete: agent != null && !agent.isReadOnly ? onDelete : null,
+          lifecycleActions: onLifecycleAction != null && agent != null ? lifecycleActions : const [],
+          onLifecycleAction: agent != null ? onLifecycleAction : null,
+          isRunningLifecycleAction: isRunningLifecycleAction,
         ),
       );
     }
@@ -88,6 +107,8 @@ class BaseAgentDetails extends StatelessWidget {
     }
 
     final clientId = agent.clientId;
+    final status = agent.status?.value;
+    final onLifecycle = onLifecycleAction;
     return AdminSection(
       ac: ac,
       block: 'agent-details',
@@ -95,6 +116,16 @@ class BaseAgentDetails extends StatelessWidget {
       description: agent.description,
       actions: [
         ...actions,
+        if (onLifecycle != null && lifecycleActions.isNotEmpty)
+          AdminLifecycleButtons(
+            ac: ac,
+            actions: lifecycleActions,
+            name: agent.name,
+            block: 'agent-details',
+            onAction: onLifecycle,
+            isRunning: isRunningLifecycleAction,
+            collectsOperatorNote: true,
+          ),
         if (onDelete != null && !agent.isReadOnly)
           AdminConfirmButton(
             ac: ac,
@@ -116,6 +147,11 @@ class BaseAgentDetails extends StatelessWidget {
               (ac.t('admin.agents.details.type'), Text(agent.type)),
               (ac.t('admin.agents.details.owner'), Text(agent.owner ?? ac.t('admin.agents.details.no_owner'))),
               (ac.t('admin.common.columns.organization_unit'), Text(agent.ouHandle ?? agent.ouId)),
+              if (status != null)
+                (
+                  ac.t('admin.common.columns.status'),
+                  Align(alignment: Alignment.centerLeft, child: AdminAccessStatusLabel(ac: ac, status: status)),
+                ),
               if (clientId != null)
                 (
                   ac.t('admin.agents.list.columns.client_id'),
@@ -164,10 +200,17 @@ class BaseAgentDetails extends StatelessWidget {
 
 /// Agent details that loads the agent, its groups, and its roles through the management API.
 ///
-/// Delete is off by default: set [deletable] to offer it (with confirmation).
+/// Changing data is off by default: set [deletable] to offer delete (with confirmation) and
+/// [lifecycleActions] to offer suspend, unsuspend and unlock.
 class AgentDetails extends StatefulWidget {
   final String agentId;
   final bool deletable;
+
+  /// Whether the agent can be suspended, unsuspended and unlocked from this view. Each action
+  /// runs through its administration flow and is offered only when the agent's status allows it
+  /// and the server configures that flow. The configured flows are read only while this is on,
+  /// and reading them needs a token that may read the server configuration.
+  final bool lifecycleActions;
   final VoidCallback? onDeleted;
   final List<Widget> actions;
   final ThunderIDPreferences? preferences;
@@ -179,6 +222,7 @@ class AgentDetails extends StatefulWidget {
     super.key,
     required this.agentId,
     this.deletable = false,
+    this.lifecycleActions = false,
     this.onDeleted,
     this.actions = const [],
     this.preferences,
@@ -194,6 +238,7 @@ class _AgentDetailsState extends AdminConnectedState<AgentDetails> {
   ResourceQuery<ManagementPage<MembershipGroup>>? _groups;
   ResourceQuery<ManagementPage<String>>? _roles;
   ResourceMutation<String, void>? _delete;
+  AdminLifecycleBinding? _lifecycle;
 
   @override
   void bind(ManagementResources resources) {
@@ -201,29 +246,41 @@ class _AgentDetailsState extends AdminConnectedState<AgentDetails> {
     _groups = own(resources.agentGroupsQuery(widget.agentId, limit: 100));
     _roles = own(resources.agentRolesQuery(widget.agentId, limit: 100));
     _delete = own(resources.deleteAgentMutation(onSuccess: (_, __) => widget.onDeleted?.call()));
+    _lifecycle = AdminLifecycleBinding(
+      resources,
+      AccountLifecycleSubjectKind.agent,
+      enabled: widget.lifecycleActions,
+      own: own,
+    );
   }
 
   @override
   void didUpdateWidget(AgentDetails oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.agentId != widget.agentId) rebind();
+    if (oldWidget.agentId != widget.agentId || oldWidget.lifecycleActions != widget.lifecycleActions) rebind();
   }
 
   @override
   Widget build(BuildContext context) {
     final ac = AdminContext.of(context, widget.preferences);
     final delete = _delete;
+    final lifecycle = _lifecycle;
+    final agent = _agent?.data;
     return BaseAgentDetails(
-      agent: _agent?.data,
+      agent: agent,
       groups: _groups?.data?.items ?? const [],
       roles: _roles?.data?.items ?? const [],
       isLoading: _agent?.isLoading ?? !providerFailed,
       error: providerFailed
           ? ac.t('admin.agents.details.error')
           : toManagementErrorMessage(ac.t, _agent?.error, 'admin.agents.details.error') ??
-              toManagementErrorMessage(ac.t, delete?.error, 'admin.agents.details.delete.error'),
+              toManagementErrorMessage(ac.t, delete?.error, 'admin.agents.details.delete.error') ??
+              lifecycle?.error(ac),
       isDeleting: delete?.isLoading ?? false,
       onDelete: widget.deletable && delete != null ? () => unawaited(delete.mutate(widget.agentId)) : null,
+      lifecycleActions: lifecycle?.actions(agent?.status?.value) ?? const [],
+      onLifecycleAction: lifecycle?.handler(widget.agentId),
+      isRunningLifecycleAction: lifecycle?.isRunning ?? false,
       actions: widget.actions,
       preferences: widget.preferences,
       builder: widget.builder,

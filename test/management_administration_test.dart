@@ -380,6 +380,7 @@ void main() {
         'name': 'Shop',
         'createdAt': '2026-10-01',
         'updatedAt': '2026-10-02',
+        'status': {'value': 'ACTIVE'},
         'futureField': {'kept': true},
         'inboundAuthConfig': [
           {
