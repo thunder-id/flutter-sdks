@@ -37,6 +37,10 @@ enum ThunderIDErrorCode {
   confirmationCodeInvalid,
   confirmationCodeExpired,
 
+  // Verification
+  /// The server refused a self user attribute verification: an `ERROR` step or an HTTP 4xx.
+  verificationFailed,
+
   // Network & Server
   networkError,
   requestTimeout,
@@ -91,6 +95,7 @@ enum ThunderIDErrorCode {
     'RECOVERY_FAILED': ThunderIDErrorCode.recoveryFailed,
     'CONFIRMATION_CODE_INVALID': ThunderIDErrorCode.confirmationCodeInvalid,
     'CONFIRMATION_CODE_EXPIRED': ThunderIDErrorCode.confirmationCodeExpired,
+    'VERIFICATION_FAILED': ThunderIDErrorCode.verificationFailed,
     'NETWORK_ERROR': ThunderIDErrorCode.networkError,
     'REQUEST_TIMEOUT': ThunderIDErrorCode.requestTimeout,
     'SERVER_ERROR': ThunderIDErrorCode.serverError,

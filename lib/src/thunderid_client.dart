@@ -10,6 +10,7 @@ import 'backend/resolve_backend_endpoints.dart';
 import 'channel/thunderid_channel.dart';
 import 'management/permissions.dart';
 import 'management/thunderid_management_client.dart';
+import 'models/attribute_verification.dart';
 import 'models/flow_models.dart';
 import 'models/http_request.dart';
 import 'models/sign_in_options.dart';
@@ -220,7 +221,9 @@ class ThunderIDClient {
     _isLoading = true;
     try {
       final backend = _backend;
-      if (backend != null) return await backend.signOut() ?? _afterSignOutUrl ?? '/';
+      if (backend != null) {
+        return await backend.signOut() ?? _afterSignOutUrl ?? '/';
+      }
       final result = await _channel.invoke<String>('signOut', {
         if (options != null) 'options': options.toMap(),
         if (sessionId != null) 'sessionId': sessionId,
@@ -327,7 +330,9 @@ class ThunderIDClient {
   Future<User> getUser({Map<String, dynamic>? options}) async {
     _requireInitialized();
     final backend = _backend;
-    if (backend != null) return User((await backend.getSession()).user ?? const {});
+    if (backend != null) {
+      return User((await backend.getSession()).user ?? const {});
+    }
     final result = await _channel.invokeMap('getUser', options);
     return User.fromMap(result);
   }
@@ -391,6 +396,39 @@ class ThunderIDClient {
       'attribute': attribute,
       'newValue': newValue,
     });
+  }
+
+  // ── Self user attribute verification ────────────────────────────────────
+
+  /// Runs one step of self user attribute verification, a `SELF_SERVICE` flow the native SDK sends
+  /// with the signed-in user's access token, from which the server takes the user.
+  ///
+  /// Without [payload], starts verifying [attribute], such as `email`, with the flow named by
+  /// [handle]; the flow sends a code or a link to the attribute's stored value. With [payload],
+  /// continues that execution: [EmbeddedSignInPayload.flowId] is the step's execution ID, and a
+  /// resend submits its action with no inputs. `COMPLETE` means the server recorded the
+  /// verification, so read [UserProfile.verifiedAttributes] again to see it.
+  ///
+  /// The request goes to `{baseUrl}/flow/execute`. The native SDK refuses, before any request and
+  /// with [ThunderIDErrorCode.invalidInput], a start without a handle or attribute and a
+  /// continuation without an execution ID. A refusal from the server, an `ERROR` step or an HTTP
+  /// 4xx, is [ThunderIDErrorCode.verificationFailed], without the response body.
+  Future<EmbeddedFlowResponse> verifyAttribute({
+    String? attribute,
+    String handle = AttributeVerification.defaultFlowHandle,
+    EmbeddedSignInPayload? payload,
+  }) async {
+    _requireInitialized();
+    _refuseOnBackend('verifyAttribute');
+    final result = await _channel.invokeMap('verifyAttribute', {
+      if (payload != null)
+        'payload': payload.toMap()
+      else ...{
+        'attribute': attribute ?? '',
+        'handle': handle,
+      },
+    });
+    return EmbeddedFlowResponse.fromMap(result);
   }
 
   // ── Flow Meta ─────────────────────────────────────────────────────────────

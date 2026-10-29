@@ -142,6 +142,20 @@ final class ThunderIDMethodHandler {
                 try await client.updateUserCredentials(attribute: attribute, newValue: newValue)
                 result(nil)
 
+            case "verifyAttribute":
+                // Mirrors the two native calls: a payload continues an execution, otherwise the
+                // attribute and handle start one. The native SDK validates both.
+                let response: EmbeddedFlowResponse
+                if let payloadMap = args["payload"] as? [String: Any] {
+                    response = try await client.verifyAttribute(payload: buildEmbeddedPayload(from: payloadMap))
+                } else {
+                    response = try await client.verifyAttribute(
+                        args["attribute"] as? String ?? "",
+                        handle: args["handle"] as? String ?? ""
+                    )
+                }
+                result(encodeFlowResponse(response))
+
             case "getFlowMeta":
                 let appId = args["applicationId"] as? String ?? ""
                 let language = args["language"] as? String ?? "en-US"
@@ -369,7 +383,9 @@ final class ThunderIDMethodHandler {
             "type": profile.type,
             "attributes": profile.attributes.mapValues { unwrapClaim($0.value) },
             "display": profile.display,
-            "isReadOnly": profile.isReadOnly
+            "isReadOnly": profile.isReadOnly,
+            // nil means the server does not report verification, which differs from none verified.
+            "verifiedAttributes": profile.verifiedAttributes?.mapValues { ["verifiedAt": $0.verifiedAt as Any] }
         ]
     }
 
@@ -415,7 +431,7 @@ final class ThunderIDMethodHandler {
     private func encodeFlowStepData(_ d: FlowStepData) -> [String: Any] {
         var result: [String: Any] = [:]
         if let inputs = d.inputs {
-            result["inputs"] = inputs.map { ["name": $0.name, "type": $0.type as Any] }
+            result["inputs"] = inputs.map { ["name": $0.name, "type": $0.type as Any, "required": $0.required as Any] }
         }
         if let actions = d.actions {
             result["actions"] = actions.map {

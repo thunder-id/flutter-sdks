@@ -7,7 +7,11 @@ enum FlowType {
   authentication,
   registration,
   passwordRecovery,
-  invitedUserRegistration;
+  invitedUserRegistration,
+
+  /// An operation the signed-in user runs on their own account, such as verifying an attribute.
+  /// The flow is named by its handle, and the server takes the user from the access token.
+  selfService;
 
   String get value {
     switch (this) {
@@ -19,6 +23,8 @@ enum FlowType {
         return 'PASSWORD_RECOVERY';
       case FlowType.invitedUserRegistration:
         return 'INVITED_USER_REGISTRATION';
+      case FlowType.selfService:
+        return 'SELF_SERVICE';
     }
   }
 }

@@ -6,10 +6,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../i18n/thunderid_i18n.dart';
+import '../../models/attribute_verification.dart';
 import '../../models/user.dart';
 import '../../models/user_profile.dart' as model;
 import '../internal/account_style.dart';
 import '../thunderid_provider.dart';
+import 'user_profile_verification.dart';
+import 'verify_attribute.dart';
 
 // Attribute names that are always readonly regardless of schema mutability (data contract).
 const Set<String> _readonlyFields = {
@@ -292,9 +295,25 @@ class UserProfileState {
   /// stay open showing [fieldError].
   final Future<void> Function(String name) save;
 
+  /// The attribute whose verification is open, if any: one the user chose to verify, or a changed
+  /// email just saved. A builder shows [VerifyAttribute] for it; the profile that reads again then
+  /// updates [verificationStatus].
+  final String? verifyingField;
+
+  /// Opens verification of an attribute [canVerify] allows.
+  final void Function(String name) verify;
+
+  /// Closes the open verification.
+  final VoidCallback closeVerification;
+
+  /// Applies the profile a verification read again, so the recorded status shows. Null leaves the
+  /// profile as it is.
+  final void Function(model.UserProfile? profile) applyVerifiedProfile;
+
   final Map<String, String> _editedValues;
   final Set<String> _editingFields;
   final Map<String, String> _fieldErrors;
+  final Map<String, model.AttributeSchema> _schema;
 
   const UserProfileState({
     required this.profile,
@@ -310,9 +329,15 @@ class UserProfileState {
     required Map<String, String> editedValues,
     required Set<String> editingFields,
     required Map<String, String> fieldErrors,
+    this.verifyingField,
+    this.verify = _ignoreVerify,
+    this.closeVerification = _ignoreClose,
+    this.applyVerifiedProfile = _ignoreProfile,
+    Map<String, model.AttributeSchema> schema = const {},
   })  : _editedValues = editedValues,
         _editingFields = editingFields,
-        _fieldErrors = fieldErrors;
+        _fieldErrors = fieldErrors,
+        _schema = schema;
 
   bool isEditing(String name) => _editingFields.contains(name);
 
@@ -320,23 +345,74 @@ class UserProfileState {
       _editedValues[field.name] ?? stringifyFieldValue(field.rawValue);
 
   String? fieldError(String name) => _fieldErrors[name];
+
+  /// The verification status of [name]'s stored value, or null when none is shown: the server
+  /// does not report verification, the attribute is not an `email` or `mobile` property, or its
+  /// value is being edited or saved.
+  AttributeVerificationStatus? verificationStatus(String name) {
+    final field = _field(name);
+    if (field == null) return null;
+    return verificationStatusOf(
+      name: name,
+      schemaType: field.schema.type,
+      storedValue: field.rawValue,
+      verified: profile?.verifiedAttributes,
+      isEditing: isEditing(name),
+    );
+  }
+
+  /// When [name]'s stored value was verified, as the server reports it.
+  String? verifiedAt(String name) {
+    if (verificationStatus(name) != AttributeVerificationStatus.verified) {
+      return null;
+    }
+    final verified = profile?.verifiedAttributes;
+    return verified == null ? null : verified[name]?.verifiedAt;
+  }
+
+  /// Whether the user can verify [name] now: its stored value is unverified, it is a verifiable
+  /// schema property, the profile is not read-only, and its verification is not already open.
+  bool canVerify(String name) =>
+      verificationStatus(name) == AttributeVerificationStatus.unverified &&
+      verifyingField != name &&
+      profile?.isReadOnly != true &&
+      AttributeVerification.isVerifiableAttribute(name, _schema);
+
+  ProfileField? _field(String name) {
+    for (final field in fields) {
+      if (field.name == name) return field;
+    }
+    return null;
+  }
 }
+
+void _ignoreVerify(String name) {}
+
+void _ignoreClose() {}
+
+void _ignoreProfile(model.UserProfile? profile) {}
 
 /// Editable, schema-driven user profile. Renders an avatar header followed by one row per
 /// schema field; tapping a row's Edit link pushes a full-screen edit page for that field.
 ///
 /// Deliberately not built on Material widgets beyond primitives like `TextField`/`InkWell`: see
 /// `internal/account_style.dart` for why.
+///
+/// A stored email address or mobile number shows its verification status, as the server reports
+/// it, and an unverified one a Verify action that opens [VerifyAttribute] under the row, running the
+/// flow named by [verificationFlowHandle]. Saving a changed email opens it by itself.
 class UserProfile extends StatelessWidget {
   final Map<String, List<String>> attributeMapping;
   final VoidCallback? onSaved;
   final VoidCallback? onError;
+  final String verificationFlowHandle;
 
   const UserProfile({
     super.key,
     this.attributeMapping = const {},
     this.onSaved,
     this.onError,
+    this.verificationFlowHandle = AttributeVerification.defaultFlowHandle,
   });
 
   @override
@@ -393,20 +469,83 @@ class UserProfile extends StatelessWidget {
               const SizedBox(height: 24),
             ],
             if (visibleFields.isNotEmpty) ...[
-              for (final field in visibleFields)
+              for (final field in visibleFields) ...[
                 ThunderAccountRow(
                   label: field.label,
                   value: _fieldDisplayValue(field),
                   editLabel: i18n.resolve('userProfile.edit'),
-                  showDivider: field != visibleFields.last,
+                  showDivider: field != visibleFields.last &&
+                      state.verifyingField != field.name,
                   onEdit: field.isReadonly || field.isComplex
                       ? null
                       : () => _openFieldEditor(context, state, field, i18n),
+                  detail: _verificationDetail(state, field, i18n),
                 ),
+                if (state.verifyingField == field.name)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 18),
+                    // BaseUserProfile's VerifiedProfileSink takes the profile it reads again.
+                    child: VerifyAttribute(
+                      key: ValueKey('verify-${field.name}'),
+                      attribute: field.name,
+                      flowHandle: verificationFlowHandle,
+                      attributeDisplayName: field.label,
+                      onDone: state.closeVerification,
+                      onCancel: state.closeVerification,
+                    ),
+                  ),
+              ],
             ],
           ],
         );
       },
+    );
+  }
+
+  /// The status badge and, for an unverified value, the Verify link, under a row's stored value.
+  Widget? _verificationDetail(
+    UserProfileState state,
+    ProfileField field,
+    ThunderIDI18n i18n,
+  ) {
+    final status = state.verificationStatus(field.name);
+    if (status == null) return null;
+    final canVerify = state.canVerify(field.name);
+    final identifier = 'thunderid-verify-${field.name}';
+    return Wrap(
+      spacing: 12,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        VerificationStatusBadge(
+          status: status,
+          verifiedAt: state.verifiedAt(field.name),
+          i18n: i18n,
+          identifier: 'thunderid-verification-status-${field.name}',
+        ),
+        if (canVerify)
+          Semantics(
+            identifier: identifier,
+            button: true,
+            child: InkWell(
+              key: Key(identifier),
+              onTap: () => state.verify(field.name),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 44),
+                child: Align(
+                  widthFactor: 1,
+                  child: Text(
+                    i18n.resolve('userProfile.verification.verify'),
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -547,6 +686,7 @@ class _BaseUserProfileState extends State<BaseUserProfile> {
   final _editedValues = <String, String>{};
   final _editingFields = <String>{};
   final _fieldErrors = <String, String>{};
+  String? _verifyingField;
 
   @override
   void initState() {
@@ -602,6 +742,8 @@ class _BaseUserProfileState extends State<BaseUserProfile> {
     final field = _fieldByName(name);
     if (field == null) return;
     setState(() {
+      // A verification describes the stored value, so editing it closes the verification.
+      if (_verifyingField == name) _verifyingField = null;
       _editedValues[name] = stringifyFieldValue(field.rawValue);
       _editingFields.add(name);
       _fieldErrors.remove(name);
@@ -650,15 +792,30 @@ class _BaseUserProfileState extends State<BaseUserProfile> {
       );
       final updated = await client.updateUserProfile(payload);
       if (!mounted) return;
+      final opensVerification = shouldVerifyAfterSave(
+        name: name,
+        schema: _schema,
+        previousValue: field.rawValue,
+        saved: updated,
+      );
       _applyProfile(updated);
       setState(() {
         _editingFields.remove(name);
         _editedValues.remove(name);
+        if (opensVerification) {
+          _verifyingField = name;
+        } else if (_verifyingField == name) {
+          _verifyingField = null;
+        }
       });
       widget.onSaved?.call();
     } catch (e) {
       if (!mounted) return;
-      setState(() => _fieldErrors[name] = e.toString());
+      setState(
+        () => _fieldErrors[name] = ThunderIDProvider.of(context)
+            .i18n
+            .resolve('userProfile.error.save'),
+      );
       widget.onError?.call();
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -691,24 +848,59 @@ class _BaseUserProfileState extends State<BaseUserProfile> {
         ),
       );
     }
-    return widget.builder(
-      context,
-      UserProfileState(
-        profile: _profile,
-        fields: _fields,
-        displayName: _displayName,
-        email: _email,
-        isLoading: _isLoading,
-        error: _error,
-        edit: _editField,
-        cancel: _cancelField,
-        setFieldValue: _setFieldValue,
-        save: _saveField,
-        editedValues: _editedValues,
-        editingFields: _editingFields,
-        fieldErrors: _fieldErrors,
+    // A VerifyAttribute the builder shows hands the profile it reads again here, so the status updates.
+    return VerifiedProfileSink(
+      onProfileRead: _applyVerifiedProfile,
+      child: widget.builder(
+        context,
+        UserProfileState(
+          profile: _profile,
+          fields: _fields,
+          displayName: _displayName,
+          email: _email,
+          isLoading: _isLoading,
+          error: _error,
+          edit: _editField,
+          cancel: _cancelField,
+          setFieldValue: _setFieldValue,
+          save: _saveField,
+          editedValues: _editedValues,
+          editingFields: _editingFields,
+          fieldErrors: _fieldErrors,
+          verifyingField: _verifyingField,
+          verify: _verify,
+          closeVerification: _closeVerification,
+          applyVerifiedProfile: _applyVerifiedProfile,
+          schema: _schema,
+        ),
       ),
     );
+  }
+
+  void _verify(String name) {
+    final field = _fieldByName(name);
+    if (field == null ||
+        _profile?.isReadOnly == true ||
+        verificationStatusOf(
+              name: name,
+              schemaType: field.schema.type,
+              storedValue: field.rawValue,
+              verified: _profile?.verifiedAttributes,
+              isEditing: _editingFields.contains(name),
+            ) !=
+            AttributeVerificationStatus.unverified ||
+        !AttributeVerification.isVerifiableAttribute(name, _schema)) {
+      return;
+    }
+    setState(() => _verifyingField = name);
+  }
+
+  void _closeVerification() {
+    setState(() => _verifyingField = null);
+  }
+
+  void _applyVerifiedProfile(model.UserProfile? profile) {
+    if (profile != null && mounted) _applyProfile(profile);
   }
 
   void _setFieldValue(String name, String value) {

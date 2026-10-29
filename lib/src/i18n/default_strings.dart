@@ -45,7 +45,28 @@ const Map<String, String> thunderDefaultStrings = {
   'userProfile.error.save': 'Failed to save changes.',
   'userProfile.validation.required': 'This field is required.',
   'userProfile.validation.pattern': 'This value is not valid.',
-  'userProfile.editDescription': "This information helps us verify it's really you using your account.",
+  'userProfile.editDescription':
+      "This information helps us verify it's really you using your account.",
+
+  // Attribute verification status in the user profile
+  'userProfile.verification.verified': 'Verified',
+  'userProfile.verification.unverified': 'Unverified',
+  'userProfile.verification.verifiedAt': 'Verified on {date}',
+  'userProfile.verification.verify': 'Verify',
+
+  // Verify attribute
+  'verifyAttribute.heading': 'Verify {attribute}',
+  'verifyAttribute.subheading.generic': 'Enter the code sent to you.',
+  'verifyAttribute.destination': 'Sent to {destination}.',
+  'verifyAttribute.destination.link':
+      'We sent a verification link to {destination}. Open it, then select Done.',
+  'verifyAttribute.submit': 'Verify',
+  'verifyAttribute.required': 'Enter the code to continue.',
+  'verifyAttribute.success': '{attribute} verified.',
+  'verifyAttribute.error': 'Verification failed. Please try again.',
+  'verifyAttribute.done': 'Done',
+  'verifyAttribute.cancel': 'Cancel',
+  'verifyAttribute.close': 'Close',
 
   // Change credential
   'changeCredential.update': 'Update',

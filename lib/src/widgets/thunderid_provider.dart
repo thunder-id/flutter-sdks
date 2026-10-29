@@ -66,6 +66,9 @@ class ThunderIDState extends State<ThunderIDProvider> {
   String? get error => _error;
   ThunderIDPreferences? get preferences => widget.config.preferences;
 
+  /// The configuration the provider initialized the client with.
+  ThunderIDConfig get config => widget.config;
+
   /// Mirrors [ThunderIDConfig.fetchUserProfile]. Off when sign-in runs on a backend: the profile
   /// comes from the claims the backend's session reports.
   bool get fetchUserProfileEnabled => widget.config.fetchUserProfile && widget.config.endpoints?.backend == null;
@@ -156,6 +159,20 @@ class ThunderIDState extends State<ThunderIDProvider> {
     // Write through to the native cache as well: getUser() short-circuits on it,
     // so a later refresh() would otherwise resurrect the pre-merge claims.
     unawaited(client.setCachedUser(merged).catchError((Object _) {}));
+  }
+
+  /// Reads `/users/me` again and merges it into [user], as after a verification the server
+  /// recorded. Returns the profile, or null when it could not be read or [fetchUserProfileEnabled]
+  /// is off: a failed read leaves the status stale, not broken.
+  Future<UserProfile?> reloadUserProfile() async {
+    if (!fetchUserProfileEnabled) return null;
+    try {
+      final profile = await client.getUserProfile();
+      mergeUserProfile(profile);
+      return profile;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Pulls `/users/me` in the background and merges it into [user].

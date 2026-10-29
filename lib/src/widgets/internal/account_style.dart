@@ -88,6 +88,9 @@ class ThunderAccountRow extends StatelessWidget {
   /// rather than relying on that ambiguous text.
   final String? identifier;
 
+  /// Shown under the value, such as the value's verification status.
+  final Widget? detail;
+
   const ThunderAccountRow({
     super.key,
     required this.label,
@@ -96,6 +99,7 @@ class ThunderAccountRow extends StatelessWidget {
     required this.onEdit,
     this.showDivider = true,
     this.identifier,
+    this.detail,
   });
 
   @override
@@ -136,7 +140,14 @@ class ThunderAccountRow extends StatelessWidget {
                   Text(label, style: TextStyle(fontSize: 15, color: colors.textSecondary)),
                   if (value.isNotEmpty) ...[
                     const SizedBox(height: 4),
-                    Text(value, style: TextStyle(fontSize: 16, color: colors.text)),
+                    Text(
+                      value,
+                      style: TextStyle(fontSize: 16, color: colors.text),
+                    ),
+                  ],
+                  if (detail != null) ...[
+                    const SizedBox(height: 6),
+                    detail!,
                   ],
                 ],
               ),
@@ -258,9 +269,17 @@ class ThunderPillButton extends StatelessWidget {
               disabledBackgroundColor: colors.pillBackground.withValues(alpha: 0.4),
               disabledForegroundColor: colors.pillText.withValues(alpha: 0.7),
               elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
-            child: Text(label, style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600)),
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 15.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
         ),
       ),
@@ -294,9 +313,17 @@ class ThunderOutlineButton extends StatelessWidget {
             style: OutlinedButton.styleFrom(
               foregroundColor: colors.accent,
               side: BorderSide(color: colors.accent, width: 1.5),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
-            child: Text(label, style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600)),
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 15.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
         ),
       ),

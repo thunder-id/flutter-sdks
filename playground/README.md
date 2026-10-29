@@ -12,8 +12,8 @@ repository.
 
 | Tab | What it does |
 |---|---|
-| **Checks** | Runs capability checks through the real SDK (system browser sign-in URL, app-native flow, passkey bridge, sign out, redirect callback, token refresh, secure storage, user info, theming, translations) and the management layer (management endpoints, forbidden vs not found errors, permission checks, groups, group members, roles and the shared state layer, role assignments, the signed-in user's groups and usages, user types, agent types, agent groups, agent roles, applications, administration flows, organization units, resource servers, connections and flows, design, translations and notification templates, server configuration, variables, secrets, gateways and configuration versions). Run one or run all, with pass/fail and the reason, a summary ring, and the server's health. Capabilities the SDK has no API for (biometric unlock, organizations) are listed as unavailable. |
-| **Components** | Storybook-style explorer for the SDK widgets (`SignInButton`, `SignOutButton`, `SignUpButton`, `SignIn`, `SignUp`, `UserAvatar`, `UserObject`, `UserDropdown`, `UserProfile`, `ChangeCredential`, `LanguageSwitcher`, `ThunderIDLogo`, `SignedIn` / `SignedOut` / `Loading`) and the admin widgets (`UserList`, `UserCreate`, `UserDetails`, `GroupList`, `GroupCreate`, `GroupMembers`, `RoleList`, `RoleCreate`, `RolePermissions`, `RoleAssignments`, `AgentList`, `AgentCreate`, `AgentDetails`, `ApplicationList`, `ApplicationCreate`, `ApplicationDetails`). Pick a story, edit props in Controls, copy the generated Flutter snippet from Code, and watch callbacks in Actions. Toggle the preview between light and dark. |
+| **Checks** | Runs capability checks through the real SDK (system browser sign-in URL, app-native flow, passkey bridge, sign out, redirect callback, token refresh, secure storage, user info, theming, attribute verification, translations) and the management layer (management endpoints, forbidden vs not found errors, permission checks, groups, group members, roles and the shared state layer, role assignments, the signed-in user's groups and usages, user types, agent types, agent groups, agent roles, applications, administration flows, organization units, resource servers, connections and flows, design, translations and notification templates, server configuration, variables, secrets, gateways and configuration versions). Run one or run all, with pass/fail and the reason, a summary ring, and the server's health. Capabilities the SDK has no API for (biometric unlock, organizations) are listed as unavailable. |
+| **Components** | Storybook-style explorer for the SDK widgets (`SignInButton`, `SignOutButton`, `SignUpButton`, `SignIn`, `SignUp`, `UserAvatar`, `UserObject`, `UserDropdown`, `UserProfile`, `VerifyAttribute`, `ChangeCredential`, `LanguageSwitcher`, `ThunderIDLogo`, `SignedIn` / `SignedOut` / `Loading`) and the admin widgets (`UserList`, `UserCreate`, `UserDetails`, `GroupList`, `GroupCreate`, `GroupMembers`, `RoleList`, `RoleCreate`, `RolePermissions`, `RoleAssignments`, `AgentList`, `AgentCreate`, `AgentDetails`, `ApplicationList`, `ApplicationCreate`, `ApplicationDetails`). Pick a story, edit props in Controls, copy the generated Flutter snippet from Code, and watch callbacks in Actions. Toggle the preview between light and dark. |
 | **Session** | Signed-in user, access token countdown, refresh and sign out, the access token (reveal or copy), decoded claims, granted permissions, and recent events. When signed out, it opens the SDK's `SignIn` and `SignUp` widgets. |
 | **Logs** | Every SDK call the playground makes and every session change it observes, filterable by outcome. |
 
@@ -62,6 +62,11 @@ it in place of its own UI. The builder gets the widget's state: `AdminListState`
 `NamedResourceFormState` and the other form states (values, setters and `submit`), or the details states (the record
 and its actions). The **Custom rendering** stories draw `UserList` as a Material `DataTable` with a pager,
 `GroupCreate` as Material text fields and `UserDetails` as a Material card.
+
+`VerifyAttribute` and `BaseVerifyAttribute` take the same `builder`. Their `VerifyAttributeState` carries the step's
+`inputNames`, `values` and `onValueChanged`, `submit` with `submitActionId`, `resend` with `resendActionId`, `done` for
+a link, `onCancel`, where the code went, loading, the translated error and `successMessage`. The story draws a
+verification as a Material card.
 
 ### Granted permissions
 
