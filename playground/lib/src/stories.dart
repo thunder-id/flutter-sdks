@@ -288,6 +288,36 @@ final List<ComponentDef> componentDefs = [
     code: (s) => 'UserProfile(\n  onSaved: () {},\n  onError: () {},\n)',
   ),
   ComponentDef(
+    id: 'verifyAttribute',
+    name: 'VerifyAttribute',
+    category: 'Presentation',
+    defaults: const {
+      'attribute': 'email',
+      'flowHandle': AttributeVerification.defaultFlowHandle,
+    },
+    controls: const [
+      ControlDef.text('attribute'),
+      ControlDef.text('flowHandle'),
+    ],
+    stories: const [
+      StoryDef('email', 'Email', preset: {'attribute': 'email'}),
+      StoryDef(
+        'mobile',
+        'Mobile number',
+        preset: {'attribute': 'mobile_number'},
+      ),
+    ],
+    build: (context, s) => _VerifyAttributeStory(
+      key: ValueKey('verify-${s.text('attribute')}|${s.text('flowHandle')}'),
+      story: s,
+    ),
+    code: (s) =>
+        'VerifyAttribute(\n  key: ValueKey(${lit(s.text('attribute'))}),\n'
+        '  attribute: ${lit(s.text('attribute'))},\n'
+        '${s.text('flowHandle') == AttributeVerification.defaultFlowHandle ? '' : '  flowHandle: ${lit(s.text('flowHandle'))},\n'}'
+        '  onComplete: () {},\n  onDone: () {},\n  onCancel: () {},\n)',
+  ),
+  ComponentDef(
     id: 'changeCredential',
     name: 'ChangeCredential',
     category: 'Presentation',
@@ -361,5 +391,45 @@ final List<ComponentDef> componentDefs = [
   ...customRenderComponentDefs,
 ];
 
-List<String> _locales(StoryContext s) =>
-    s.text('locales').split(',').map((l) => l.trim()).where((l) => l.isNotEmpty).toList();
+/// Starting a verification sends a message, so the story waits for a tap.
+class _VerifyAttributeStory extends StatefulWidget {
+  final StoryContext story;
+
+  const _VerifyAttributeStory({super.key, required this.story});
+
+  @override
+  State<_VerifyAttributeStory> createState() => _VerifyAttributeStoryState();
+}
+
+class _VerifyAttributeStoryState extends State<_VerifyAttributeStory> {
+  bool _started = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.story;
+    if (!_started) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: FilledButton(
+          onPressed: () => setState(() => _started = true),
+          child: Text('Send a code to ${s.text('attribute')}'),
+        ),
+      );
+    }
+    return VerifyAttribute(
+      attribute: s.text('attribute'),
+      flowHandle: s.text('flowHandle'),
+      onComplete: () => s.emit('onComplete'),
+      onDone: () => s.emit('onDone'),
+      onError: (error) => s.emit('onError(${error.code.value})'),
+      onCancel: () => setState(() => _started = false),
+    );
+  }
+}
+
+List<String> _locales(StoryContext s) => s
+    .text('locales')
+    .split(',')
+    .map((l) => l.trim())
+    .where((l) => l.isNotEmpty)
+    .toList();
