@@ -226,6 +226,76 @@ void main() {
         ],
       });
     });
+
+    testWidgets('lists candidates from its organization unit and drops them when it changes', (tester) async {
+      serveMembers();
+      server.on('GET', '/agents', {
+        'totalResults': 1,
+        'agents': [
+          {'id': 'a1', 'ouId': 'ou1', 'type': 'default', 'attributes': {'name': 'Bot'}},
+        ],
+      });
+      late GroupMembersState state;
+      Widget view(String ouId) => _app(
+            server,
+            GroupMembers(
+              groupId: 'g1',
+              editable: true,
+              ouId: ouId,
+              builder: (context, members) {
+                state = members;
+                return const SizedBox.shrink();
+              },
+            ),
+          );
+
+      await tester.pumpWidget(view('ou1'));
+      await tester.pumpAndSettle();
+
+      for (final path in ['/users', '/agents']) {
+        expect(server.where('GET', path).last.url.queryParameters['filter'], 'ouId eq "ou1"');
+      }
+      expect(state.candidates![GroupMemberType.user], hasLength(2));
+      expect(state.candidates![GroupMemberType.agent], hasLength(1));
+
+      for (final path in ['/users', '/agents']) {
+        server.on('GET', path, {'message': 'failed'}, status: 500);
+      }
+      await tester.pumpWidget(view('ou2'));
+      await tester.pumpAndSettle();
+
+      for (final path in ['/users', '/agents']) {
+        expect(server.where('GET', path).last.url.queryParameters['filter'], 'ouId eq "ou2"');
+      }
+      expect(state.candidates![GroupMemberType.user], isEmpty);
+      expect(state.candidates![GroupMemberType.agent], isEmpty);
+    });
+
+    testWidgets('lists no candidates for an organization unit that makes no filter', (tester) async {
+      serveMembers();
+      late GroupMembersState state;
+      await tester.pumpWidget(
+        _app(
+          server,
+          GroupMembers(
+            groupId: 'g1',
+            editable: true,
+            ouId: '  ',
+            builder: (context, members) {
+              state = members;
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      for (final path in ['/users', '/agents']) {
+        expect(server.where('GET', path), isEmpty);
+      }
+      expect(state.candidates![GroupMemberType.user], isEmpty);
+      expect(state.candidates![GroupMemberType.agent], isEmpty);
+    });
   });
 
   group('Base components', () {

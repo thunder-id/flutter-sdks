@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 
 import '../../management/management_display.dart';
+import '../../management/management_filter.dart';
 import '../../models/management/agent.dart';
 import '../../models/management/group.dart';
 import '../../models/management/managed_user.dart';
@@ -136,6 +137,9 @@ class BaseGroupMembers extends StatelessWidget {
 class GroupMembers extends StatefulWidget {
   final String groupId;
   final bool editable;
+
+  /// Organization unit the users and agents offered for adding are listed from.
+  final String? ouId;
   final String? title;
   final String? description;
   final ThunderIDPreferences? preferences;
@@ -147,6 +151,7 @@ class GroupMembers extends StatefulWidget {
     super.key,
     required this.groupId,
     this.editable = false,
+    this.ouId,
     this.title,
     this.description,
     this.preferences,
@@ -167,8 +172,12 @@ class _GroupMembersState extends AdminConnectedState<GroupMembers> {
   @override
   void bind(ManagementResources resources) {
     _members = own(resources.groupMembersQuery(widget.groupId, limit: 100));
-    _users = own(resources.usersQuery(limit: 100, enabled: widget.editable));
-    _agents = own(resources.agentsQuery(limit: 100, enabled: widget.editable));
+    final ouId = widget.ouId;
+    final filter = ouId == null ? null : ManagementFilter.equality('ouId', ouId);
+    // An ouId that makes no filter, such as a blank one, lists no candidates rather than every organization unit's.
+    final listCandidates = widget.editable && (ouId == null || filter != null);
+    _users = own(resources.usersQuery(filter: filter, limit: 100, enabled: listCandidates));
+    _agents = own(resources.agentsQuery(filter: filter, limit: 100, enabled: listCandidates));
     _add = own(resources.addGroupMembersMutation());
     _remove = own(resources.removeGroupMembersMutation());
   }
@@ -176,7 +185,10 @@ class _GroupMembersState extends AdminConnectedState<GroupMembers> {
   @override
   void didUpdateWidget(GroupMembers oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.groupId != widget.groupId || oldWidget.editable != widget.editable) rebind();
+    // New queries start with no data, so no candidate from the previous organization unit is offered.
+    if (oldWidget.groupId != widget.groupId || oldWidget.editable != widget.editable || oldWidget.ouId != widget.ouId) {
+      rebind();
+    }
   }
 
   @override

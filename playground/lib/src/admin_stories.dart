@@ -427,8 +427,8 @@ final List<ComponentDef> adminComponentDefs = [
     id: 'groupMembers',
     name: 'GroupMembers',
     category: 'Admin',
-    defaults: const {'groupId': '', 'editable': true, 'state': 'data'},
-    controls: const [ControlDef.text('groupId'), ControlDef.toggle('editable')],
+    defaults: const {'groupId': '', 'editable': true, 'ouId': '', 'state': 'data'},
+    controls: const [ControlDef.text('groupId'), ControlDef.toggle('editable'), ControlDef.text('ouId')],
     stories: const [
       StoryDef('connected', 'Connected'),
       StoryDef('base', 'Base (sample data)', controls: [ControlDef.choice('state', _states), ControlDef.toggle('editable')]),
@@ -452,6 +452,7 @@ final List<ComponentDef> adminComponentDefs = [
         key: ValueKey('groupMembers/$groupId/${s.flag('editable')}'),
         groupId: groupId,
         editable: s.flag('editable'),
+        ouId: _opt(s, 'ouId'),
         preferences: _prefs(s),
       );
     },
@@ -466,6 +467,7 @@ final List<ComponentDef> adminComponentDefs = [
         : _snippet('GroupMembers', [
             'groupId: ${lit(_id(s, 'groupId', 'group').isEmpty ? 'group-id' : _id(s, 'groupId', 'group'))}',
             if (s.flag('editable')) 'editable: true',
+            if (_opt(s, 'ouId') != null) 'ouId: ${lit(_opt(s, 'ouId')!)}',
           ]),
   ),
   _list<Role>(
