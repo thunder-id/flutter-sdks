@@ -222,6 +222,12 @@ class _RoleAssignmentsState extends AdminConnectedState<RoleAssignments> {
   @override
   void bind(ManagementResources resources) {
     _assignments = own(resources.roleAssignmentsQuery(widget.roleId, type: _typeFilter, limit: 100));
+    _bindCandidates(resources);
+    _assign = own(resources.addRoleAssignmentsMutation());
+    _unassign = own(resources.removeRoleAssignmentsMutation(administrationMode: widget.administrationMode));
+  }
+
+  void _bindCandidates(ManagementResources resources) {
     final ouId = widget.ouId;
     final filter = ouId == null ? null : ManagementFilter.equality('ouId', ouId);
     // An ouId that makes no filter, such as a blank one, lists no candidates rather than every organization unit's.
@@ -229,19 +235,23 @@ class _RoleAssignmentsState extends AdminConnectedState<RoleAssignments> {
     _users = own(resources.usersQuery(filter: filter, limit: 100, enabled: listCandidates));
     _groups = own(resources.groupsQuery(filter: filter, limit: 100, enabled: listCandidates));
     _agents = own(resources.agentsQuery(filter: filter, limit: 100, enabled: listCandidates));
-    _assign = own(resources.addRoleAssignmentsMutation());
-    _unassign = own(resources.removeRoleAssignmentsMutation(administrationMode: widget.administrationMode));
   }
 
   @override
   void didUpdateWidget(RoleAssignments oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // New queries start with no data, so no candidate from the previous organization unit is offered.
     if (oldWidget.roleId != widget.roleId ||
         oldWidget.editable != widget.editable ||
-        oldWidget.ouId != widget.ouId ||
         oldWidget.administrationMode != widget.administrationMode) {
       rebind();
+    } else if (oldWidget.ouId != widget.ouId) {
+      // Only the candidates depend on the organization unit, so the assignments and any pending update are kept. New
+      // queries start with no data, so no candidate from the previous organization unit is offered.
+      release(_users);
+      release(_groups);
+      release(_agents);
+      final resources = this.resources;
+      if (resources != null) _bindCandidates(resources);
     }
   }
 
