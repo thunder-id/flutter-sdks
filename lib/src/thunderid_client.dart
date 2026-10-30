@@ -8,6 +8,7 @@ import 'backend/backend_http_client.dart';
 import 'backend/http_transport.dart';
 import 'backend/resolve_backend_endpoints.dart';
 import 'channel/thunderid_channel.dart';
+import 'management/management_transport.dart';
 import 'management/permissions.dart';
 import 'management/thunderid_management_client.dart';
 import 'models/flow_models.dart';
@@ -419,8 +420,9 @@ class ThunderIDClient {
 
   /// Sends a request to the app's API when sign-in runs on a backend.
   ///
-  /// A URL under [ThunderIDConfig.baseUrl] (or a path starting with `/`) goes through the
-  /// backend's proxy with the session handle; the backend attaches the access token. A URL under
+  /// A path starting with `/`, or a URL under the backend's proxy (`endpoints.backend.proxy`,
+  /// resolved against [ThunderIDConfig.baseUrl], the backend), goes through the proxy with the
+  /// session handle; the backend attaches the access token. A URL under
   /// one of `endpoints.backend.bypass.urls` goes straight there, with the access token unless
   /// `attachToken` is off. Any other URL is refused with
   /// [ThunderIDErrorCode.backendUnsupportedUrl] and nothing is sent.
@@ -446,24 +448,54 @@ class ThunderIDClient {
   /// operations").
   ///
   /// Uses [ThunderIDConfig.endpoints] for collection URL overrides and
-  /// [ThunderIDConfig.http]'s fetcher, when set, as the transport.
+  /// [ThunderIDConfig.http]'s fetcher, when set, as the transport. Collection URLs are built on
+  /// [ThunderIDConfig.baseUrl].
+  ///
+  /// When sign-in runs on a backend, [ThunderIDConfig.baseUrl] is the backend: collection URLs are
+  /// built on its proxy (`endpoints.backend.proxy`), and requests go through the proxy with the
+  /// session handle. The backend attaches the access token; none is requested here.
   ThunderIDManagementClient get management {
     _requireInitialized();
     final config = _config!;
+    final backendHttp = _backendHttp;
     return _management ??= ThunderIDManagementClient(
-      baseUrl: config.baseUrl,
+      baseUrl: _backend?.endpoints.proxy ?? config.baseUrl,
       endpoints: config.endpoints?.collections ?? const {},
-      fetcher: config.http?.fetcher,
+      fetcher: config.http?.fetcher ?? (backendHttp == null ? null : _backendManagementFetcher(backendHttp)),
       accessTokenProvider: getAccessToken,
       allowInsecureConnections: config.allowInsecureConnections,
     );
   }
 
+  /// Sends management requests through the backend's proxy with the session handle, the way
+  /// [httpRequest] does. No access token is requested: the backend attaches it.
+  static ManagementFetcher _backendManagementFetcher(BackendHttpClient backendHttp) =>
+      (ManagementRequest request) async {
+        final response = await backendHttp.request(
+          HttpRequestConfig(
+            url: request.url.toString(),
+            method: request.method,
+            headers: request.headers,
+            data: request.body,
+          ),
+        );
+        return ManagementResponse(statusCode: response.statusCode, body: response.body);
+      };
+
   /// The permissions the signed-in user's access token carries, read from its `scope`/`scopes`
   /// claim. Decoded, not verified: use it only to decide what to show, and test a requirement
   /// against it with [hasPermission].
-  Future<List<String>> getGrantedPermissions({String? sessionId}) async =>
-      getTokenPermissions(await getAccessToken(sessionId: sessionId));
+  ///
+  /// When sign-in runs on a backend, they come only from the backend's session (`scope`): the token
+  /// stays on the backend, so a session without `scope` grants nothing, and no token is requested.
+  Future<List<String>> getGrantedPermissions({String? sessionId}) async {
+    final backend = _backend;
+    if (backend != null) {
+      final scope = (await backend.getSession()).scope;
+      return scope == null ? const [] : scope.split(' ').where((entry) => entry.isNotEmpty).toList();
+    }
+    return getTokenPermissions(await getAccessToken(sessionId: sessionId));
+  }
 
   // ── Private helpers ───────────────────────────────────────────────────────
 
@@ -479,6 +511,7 @@ class ThunderIDClient {
       onSignedOut: _notifySignedOut,
     );
     _backend = backend;
+    _config = config;
     _backendHttp = BackendHttpClient(backend, _httpTransport);
     _afterSignOutUrl = config.afterSignOutUrl;
     // Checks on returning to the foreground run either way; polling only when asked for.

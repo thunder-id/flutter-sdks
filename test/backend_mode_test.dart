@@ -18,12 +18,11 @@ const _backend = 'https://app.example.com';
 const _dataPlane = 'https://dp.example.com/api';
 
 const _config = ThunderIDConfig(
-  baseUrl: 'https://api.example.com',
+  baseUrl: _backend,
   afterSignInUrl: 'com.example.app://callback',
   afterSignOutUrl: 'com.example.app://signout',
   endpoints: EndpointsConfig(
     backend: BackendEndpoints(
-      baseUrl: _backend,
       bypass: BackendBypass(urls: [_dataPlane]),
     ),
   ),
@@ -159,9 +158,9 @@ void main() {
 
     test('rejects a non-HTTPS backend before any call', () async {
       const config = ThunderIDConfig(
-        baseUrl: 'https://api.example.com',
+        baseUrl: 'http://app.example.com',
         afterSignInUrl: 'com.example.app://callback',
-        endpoints: EndpointsConfig(backend: BackendEndpoints(baseUrl: 'http://app.example.com')),
+        endpoints: EndpointsConfig(backend: BackendEndpoints()),
       );
 
       await expectLater(client.initialize(config), throwsCode(ThunderIDErrorCode.invalidConfiguration));
@@ -224,7 +223,7 @@ void main() {
       expect(await client.isSignedIn(), true);
 
       server.on('GET', '$_backend/api/auth/proxy/orders', [_json(200, [])]);
-      await client.httpRequest(const HttpRequestConfig(url: 'https://api.example.com/orders'));
+      await client.httpRequest(const HttpRequestConfig(url: '/orders'));
       expect(server.to('$_backend/api/auth/proxy/orders').single.header('X-Session-Handle'), 'handle-1');
     });
 
@@ -265,7 +264,7 @@ void main() {
 
   group('401 handling', () {
     const ordersUrl = '$_backend/api/auth/proxy/orders';
-    const request = HttpRequestConfig(url: 'https://api.example.com/orders');
+    const request = HttpRequestConfig(url: '/orders');
 
     test('session_expired refreshes once and retries', () async {
       await signedIn();
@@ -354,11 +353,45 @@ void main() {
       expect(sent.header('Authorization'), isNull);
     });
 
-    test('a URL outside the API base and the bypass URLs is refused, not sent', () async {
+    test('a URL already under the proxy is sent as it is, not prefixed again', () async {
+      await signedIn();
+      server.on('GET', '$_backend/api/auth/proxy/orders/7', [_json(200, {})]);
+
+      final absolute = await client.httpRequest(const HttpRequestConfig(url: '$_backend/api/auth/proxy/orders/7'));
+      final path = await client.httpRequest(const HttpRequestConfig(url: '/api/auth/proxy/orders/7'));
+
+      expect(absolute.statusCode, 200);
+      expect(path.statusCode, 200);
+      expect(server.to('$_backend/api/auth/proxy/orders/7'), hasLength(2));
+      expect(server.requests.any((r) => r.url.path.contains('/proxy/api/auth/proxy')), false);
+    });
+
+    test('management URLs are built on the proxy, on baseUrl, the backend', () async {
+      await signedIn();
+
+      expect(client.management.baseUrl, '$_backend/api/auth/proxy');
+    });
+
+    test('management requests go through the proxy without an access token', () async {
+      await signedIn();
+      server.on('GET', '$_backend/api/auth/proxy/users', [
+        _json(200, {'totalResults': 0, 'startIndex': 1, 'count': 0, 'users': []}),
+      ]);
+
+      final page = await client.management.getUsers();
+
+      expect(page.items, isEmpty);
+      final sent = server.to('$_backend/api/auth/proxy/users').single;
+      expect(sent.header('X-Session-Handle'), 'handle-1');
+      expect(sent.header('Authorization'), isNull);
+      expect(server.to('$_backend/api/auth/token'), isEmpty);
+    });
+
+    test('a URL outside the proxy and the bypass URLs is refused, not sent', () async {
       await signedIn();
       final before = server.requests.length;
 
-      for (final url in ['https://evil.example/orders', 'https://api.example.com.evil.example/x', '//evil/x']) {
+      for (final url in ['https://evil.example/orders', 'https://api.example.com/orders', '$_backend/orders', '//evil/x']) {
         await expectLater(
           client.httpRequest(HttpRequestConfig(url: url)),
           throwsCode(ThunderIDErrorCode.backendUnsupportedUrl),
@@ -376,6 +409,30 @@ void main() {
         throwsCode(ThunderIDErrorCode.operationNotSupported),
       );
       expect(server.requests, isEmpty);
+    });
+  });
+
+  group('granted permissions', () {
+    test('come from the session, without asking for the access token', () async {
+      server.on('GET', '$_backend/api/auth/session', [
+        _json(200, {
+          'isSignedIn': true,
+          'user': {'sub': 'user-1'},
+          'expiresAt': 1800000000,
+          'scope': 'openid system:user  system:group:view',
+        }),
+      ]);
+      await signedIn();
+
+      expect(await client.getGrantedPermissions(), ['openid', 'system:user', 'system:group:view']);
+      expect(server.to('$_backend/api/auth/token'), isEmpty);
+    });
+
+    test('are empty when the session has no scope, without asking for the access token', () async {
+      await signedIn();
+
+      expect(await client.getGrantedPermissions(), isEmpty);
+      expect(server.to('$_backend/api/auth/token'), isEmpty);
     });
   });
 
@@ -510,11 +567,10 @@ void main() {
 
     test('with attachToken off, carries no token and never calls the token endpoint', () async {
       const config = ThunderIDConfig(
-        baseUrl: 'https://api.example.com',
+        baseUrl: _backend,
         afterSignInUrl: 'com.example.app://callback',
         endpoints: EndpointsConfig(
           backend: BackendEndpoints(
-            baseUrl: _backend,
             bypass: BackendBypass(urls: [_dataPlane], attachToken: false),
           ),
         ),

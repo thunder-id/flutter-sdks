@@ -14,8 +14,9 @@ class ThunderIDConfig {
   /// Base URL of the ThunderID server.
   ///
   /// When sign-in runs on a backend ([EndpointsConfig.backend]), the SDK never talks to the
-  /// ThunderID server, and this is instead the base URL of the app's API: requests under it are
-  /// sent through the backend's proxy.
+  /// ThunderID server, and this is instead the backend's base URL, which must use HTTPS. Backend
+  /// endpoints given as paths resolve against it, and the app's API is reached through the
+  /// backend's proxy ([BackendEndpoints.proxy]).
   final String baseUrl;
   final String? clientId;
 

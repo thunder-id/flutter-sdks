@@ -374,20 +374,20 @@ class BackendClient {
 
   /// Maps an API URL to its backend proxy URL.
   ///
-  /// Returns `null` when the URL is not under the API base, and so cannot be sent with the
-  /// session's credentials.
+  /// A URL already under the proxy is sent as it is, and so is a path that already starts with the
+  /// proxy's path. Any other path starting with `/` goes under the proxy. Returns `null` for any
+  /// other absolute URL, which cannot be sent with the session's credentials.
   Uri? toProxyUrl(String url) {
-    final apiBaseUrl = endpoints.apiBaseUrl;
-    final String rest;
-    if (url == apiBaseUrl || url.startsWith('$apiBaseUrl/') || url.startsWith('$apiBaseUrl?')) {
-      rest = url.substring(apiBaseUrl.length);
-    } else if (url.startsWith('/') && !url.startsWith('//')) {
-      rest = url;
-    } else {
-      return null;
-    }
-    return Uri.parse('${endpoints.proxy}${rest.startsWith('/') ? rest : '/$rest'}');
+    final proxy = endpoints.proxy;
+    if (_isUnder(url, proxy)) return Uri.parse(url);
+    if (!url.startsWith('/') || url.startsWith('//')) return null;
+    final proxyUri = Uri.parse(proxy);
+    if (_isUnder(url, proxyUri.path)) return proxyUri.resolve(url);
+    return Uri.parse('$proxy$url');
   }
+
+  static bool _isUnder(String url, String base) =>
+      base.isNotEmpty && (url == base || url.startsWith('$base/') || url.startsWith('$base?'));
 
   /// Whether a request to this URL skips the proxy and goes straight from the app.
   bool isBypassed(String url) => endpoints.bypassUrls.any(

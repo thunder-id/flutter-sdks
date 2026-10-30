@@ -7,9 +7,13 @@ import 'package:thunderid_flutter/src/models/backend.dart';
 import 'package:thunderid_flutter/src/models/thunderid_config.dart';
 import 'package:thunderid_flutter/src/models/thunderid_error.dart';
 
-ThunderIDConfig _config(BackendEndpoints backend, {String? afterSignInUrl = 'com.example.app://callback'}) =>
+ThunderIDConfig _config(
+  BackendEndpoints backend, {
+  String baseUrl = 'https://app.example.com/',
+  String? afterSignInUrl = 'com.example.app://callback',
+}) =>
     ThunderIDConfig(
-      baseUrl: 'https://api.example.com/',
+      baseUrl: baseUrl,
       afterSignInUrl: afterSignInUrl,
       endpoints: EndpointsConfig(backend: backend),
     );
@@ -26,8 +30,8 @@ void main() {
     );
   });
 
-  test('defaults every endpoint under /api/auth on the backend base URL', () {
-    final endpoints = resolveBackendEndpoints(_config(const BackendEndpoints(baseUrl: 'https://app.example.com/')))!;
+  test('defaults every endpoint under /api/auth on baseUrl, the backend', () {
+    final endpoints = resolveBackendEndpoints(_config(const BackendEndpoints()))!;
 
     expect(endpoints.signIn.toString(), 'https://app.example.com/api/auth/signin');
     expect(endpoints.session.toString(), 'https://app.example.com/api/auth/session');
@@ -36,7 +40,6 @@ void main() {
     expect(endpoints.signOut.toString(), 'https://app.example.com/api/auth/signout');
     expect(endpoints.proxy, 'https://app.example.com/api/auth/proxy');
     expect(endpoints.token.toString(), 'https://app.example.com/api/auth/token');
-    expect(endpoints.apiBaseUrl, 'https://api.example.com');
     expect(endpoints.redirectUri, 'com.example.app://callback');
     expect(endpoints.bypassUrls, isEmpty);
     expect(endpoints.attachToken, true);
@@ -46,7 +49,6 @@ void main() {
     final endpoints = resolveBackendEndpoints(
       _config(
         const BackendEndpoints(
-          baseUrl: 'https://app.example.com',
           signIn: '/auth/login',
           session: '/auth/me',
           checkSession: '/auth/alive',
@@ -70,13 +72,28 @@ void main() {
     expect(endpoints.attachToken, false);
   });
 
-  test('requires an HTTPS backend base URL', () {
+  test('uses an absolute HTTPS endpoint as it is', () {
+    final endpoints = resolveBackendEndpoints(
+      _config(
+        const BackendEndpoints(
+          session: 'https://auth.example.com/session/app',
+          proxy: 'https://gateway.example.com/app/api/',
+        ),
+      ),
+    )!;
+
+    expect(endpoints.session.toString(), 'https://auth.example.com/session/app');
+    expect(endpoints.proxy, 'https://gateway.example.com/app/api');
+    expect(endpoints.signIn.toString(), 'https://app.example.com/api/auth/signin');
+  });
+
+  test('requires an HTTPS baseUrl, the backend', () {
     expect(
-      () => resolveBackendEndpoints(_config(const BackendEndpoints(baseUrl: 'http://app.example.com'))),
+      () => resolveBackendEndpoints(_config(const BackendEndpoints(), baseUrl: 'http://app.example.com')),
       _invalidConfiguration(),
     );
     expect(
-      () => resolveBackendEndpoints(_config(const BackendEndpoints(baseUrl: 'app.example.com'))),
+      () => resolveBackendEndpoints(_config(const BackendEndpoints(), baseUrl: 'app.example.com')),
       _invalidConfiguration(),
     );
   });
@@ -86,7 +103,6 @@ void main() {
       () => resolveBackendEndpoints(
         _config(
           const BackendEndpoints(
-            baseUrl: 'https://app.example.com',
             bypass: BackendBypass(urls: ['http://dp.example.com']),
           ),
         ),
@@ -95,17 +111,17 @@ void main() {
     );
   });
 
-  test('keeps every endpoint on the backend: an absolute URL is rejected', () {
+  test('refuses an endpoint that is neither a path nor an HTTPS URL', () {
     expect(
-      () => resolveBackendEndpoints(
-        _config(const BackendEndpoints(baseUrl: 'https://app.example.com', token: 'https://evil.example/token')),
-      ),
+      () => resolveBackendEndpoints(_config(const BackendEndpoints(token: 'http://app.example.com/token'))),
       _invalidConfiguration(),
     );
     expect(
-      () => resolveBackendEndpoints(
-        _config(const BackendEndpoints(baseUrl: 'https://app.example.com', proxy: '//evil.example/proxy')),
-      ),
+      () => resolveBackendEndpoints(_config(const BackendEndpoints(proxy: '//evil.example/proxy'))),
+      _invalidConfiguration(),
+    );
+    expect(
+      () => resolveBackendEndpoints(_config(const BackendEndpoints(session: 'api/auth/session'))),
       _invalidConfiguration(),
     );
   });
@@ -113,7 +129,7 @@ void main() {
   test('requires afterSignInUrl as the redirect URI', () {
     expect(
       () => resolveBackendEndpoints(
-        _config(const BackendEndpoints(baseUrl: 'https://app.example.com'), afterSignInUrl: null),
+        _config(const BackendEndpoints(), afterSignInUrl: null),
       ),
       _invalidConfiguration(),
     );
@@ -121,14 +137,14 @@ void main() {
 
   test('toMap keeps the backend and session settings away from the native SDK', () {
     const config = ThunderIDConfig(
-      baseUrl: 'https://api.example.com',
-      endpoints: EndpointsConfig(backend: BackendEndpoints(baseUrl: 'https://app.example.com')),
+      baseUrl: 'https://app.example.com',
+      endpoints: EndpointsConfig(backend: BackendEndpoints(proxy: 'https://api.example.com/proxy')),
       session: SessionConfig(checkInterval: 30),
     );
     final map = config.toMap();
 
     expect(map.containsKey('endpoints'), false);
     expect(map.containsKey('session'), false);
-    expect(map.values.whereType<String>().any((v) => v.contains('app.example.com')), false);
+    expect(map.values.whereType<String>().any((v) => v.contains('api.example.com')), false);
   });
 }
