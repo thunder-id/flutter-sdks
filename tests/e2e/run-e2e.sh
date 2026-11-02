@@ -104,7 +104,15 @@ start_server() {
     local version="${THUNDERID_VERSION:-}"
     if [ -z "$version" ]; then
         echo "==> Resolving the latest ThunderID release"
-        version=$(curl -sSL https://api.github.com/repos/thunder-id/thunderid/releases/latest |
+        # Unauthenticated GitHub API calls share a budget of 60 an hour per IP address, and hosted
+        # runners share their outbound IPs, so on CI that budget is regularly spent before this
+        # call is made. Authenticate when a token is available; a local run without one still works.
+        local api_auth=""
+        if [ -n "${GITHUB_TOKEN:-}" ]; then
+            api_auth="Authorization: Bearer $GITHUB_TOKEN"
+        fi
+        version=$(curl -sSL ${api_auth:+-H "$api_auth"} \
+            https://api.github.com/repos/thunder-id/thunderid/releases/latest |
             jq -r '.tag_name // empty' | sed 's/^v//')
         if [ -z "$version" ]; then
             echo "ERROR: could not resolve the latest release (rate limited?). Set THUNDERID_VERSION." >&2
