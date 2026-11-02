@@ -1,3 +1,7 @@
+## 1.6.0
+
+- Let admin components run administration flows and lifecycle actions
+
 ## 1.5.0
 
 -  List role assignment candidates from an organization unit
