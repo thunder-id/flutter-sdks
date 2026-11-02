@@ -7,19 +7,15 @@ import '../models/thunderid_error.dart';
 
 const String _defaultBackendBasePath = '/api/auth';
 
-/// The backend endpoints, fully resolved against the backend's base URL, with the API base whose
-/// requests go through the proxy.
+/// The backend endpoints, fully resolved against the backend's base URL.
 class ResolvedBackendEndpoints {
-  /// The app's API base: requests under it are sent through [proxy].
-  final String apiBaseUrl;
-
   final Uri signIn;
   final Uri session;
   final Uri checkSession;
   final Uri refresh;
   final Uri signOut;
 
-  /// The proxy prefix as an absolute URL, without a trailing slash.
+  /// The proxy prefix as an absolute URL, without a trailing slash: the app's API base.
   final String proxy;
 
   final Uri token;
@@ -34,7 +30,6 @@ class ResolvedBackendEndpoints {
   final bool attachToken;
 
   const ResolvedBackendEndpoints({
-    required this.apiBaseUrl,
     required this.signIn,
     required this.session,
     required this.checkSession,
@@ -51,9 +46,13 @@ class ResolvedBackendEndpoints {
 /// Resolves the backend endpoints from `endpoints.backend`, or returns `null` when it is not set
 /// and sign-in does not run on a backend.
 ///
+/// [ThunderIDConfig.baseUrl] is the backend's base URL. An endpoint given as a path resolves
+/// against it, and one given as an absolute HTTPS URL is used as it is.
+///
 /// Fails with [ThunderIDErrorCode.invalidConfiguration], before any network call, when the
-/// backend's base URL or a bypass URL does not use HTTPS, an endpoint is not a path, or
-/// [ThunderIDConfig.afterSignInUrl] (the redirect URI the backend returns to) is missing.
+/// backend's base URL, an absolute endpoint, or a bypass URL does not use HTTPS, an
+/// endpoint is neither a path nor an absolute URL, or [ThunderIDConfig.afterSignInUrl] (the
+/// redirect URI the backend returns to) is missing.
 ///
 /// ```dart
 /// resolveBackendEndpoints(config)?.signIn; // https://app.example.com/api/auth/signin
@@ -62,16 +61,16 @@ ResolvedBackendEndpoints? resolveBackendEndpoints(ThunderIDConfig config) {
   final endpoints = config.endpoints?.backend;
   if (endpoints == null) return null;
 
-  final base = Uri.tryParse(endpoints.baseUrl);
-  if (base == null || base.scheme != 'https' || base.host.isEmpty) {
+  if (!_isHttpsUrl(config.baseUrl)) {
     throw const IAMException(
       ThunderIDErrorCode.invalidConfiguration,
-      'endpoints.backend.baseUrl must be an HTTPS URL',
+      'baseUrl must be an HTTPS URL when sign-in runs on a backend (endpoints.backend): it is the backend',
     );
   }
-  final baseUrl = _trimTrailingSlashes(endpoints.baseUrl);
+  final baseUrl = _trimTrailingSlashes(config.baseUrl);
 
-  Uri resolve(String name, String? path, String fallback) => Uri.parse(_resolvePath(baseUrl, name, path, fallback));
+  Uri resolve(String name, String? value, String fallback) =>
+      Uri.parse(_resolveEndpoint(baseUrl, name, value, fallback));
 
   final redirectUri = config.afterSignInUrl;
   final redirect = redirectUri == null ? null : Uri.tryParse(redirectUri);
@@ -84,8 +83,7 @@ ResolvedBackendEndpoints? resolveBackendEndpoints(ThunderIDConfig config) {
 
   final bypass = endpoints.bypass ?? const BackendBypass();
   for (final url in bypass.urls) {
-    final uri = Uri.tryParse(url);
-    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
+    if (!_isHttpsUrl(url)) {
       throw const IAMException(
         ThunderIDErrorCode.invalidConfiguration,
         'Every endpoints.backend.bypass.urls entry must be an HTTPS URL',
@@ -94,13 +92,12 @@ ResolvedBackendEndpoints? resolveBackendEndpoints(ThunderIDConfig config) {
   }
 
   return ResolvedBackendEndpoints(
-    apiBaseUrl: _trimTrailingSlashes(config.baseUrl),
     signIn: resolve('signIn', endpoints.signIn, '/signin'),
     session: resolve('session', endpoints.session, '/session'),
     checkSession: resolve('checkSession', endpoints.checkSession, '/checksession'),
     refresh: resolve('refresh', endpoints.refresh, '/refresh'),
     signOut: resolve('signOut', endpoints.signOut, '/signout'),
-    proxy: _trimTrailingSlashes(_resolvePath(baseUrl, 'proxy', endpoints.proxy, '/proxy')),
+    proxy: _trimTrailingSlashes(_resolveEndpoint(baseUrl, 'proxy', endpoints.proxy, '/proxy')),
     token: resolve('token', endpoints.token, '/token'),
     redirectUri: redirectUri!,
     bypassUrls: bypass.urls.map(_trimTrailingSlashes).toList(growable: false),
@@ -108,17 +105,21 @@ ResolvedBackendEndpoints? resolveBackendEndpoints(ThunderIDConfig config) {
   );
 }
 
-/// Resolves an endpoint path against the backend's base URL. A path has to start with a single
-/// `/`, so every endpoint stays on the pinned backend.
-String _resolvePath(String baseUrl, String name, String? path, String fallback) {
-  final value = path ?? '$_defaultBackendBasePath$fallback';
-  if (!value.startsWith('/') || value.startsWith('//')) {
-    throw IAMException(
-      ThunderIDErrorCode.invalidConfiguration,
-      'endpoints.backend.$name must be a path starting with "/"',
-    );
-  }
-  return '$baseUrl$value';
+/// Resolves an endpoint: a path (starting with a single `/`) against the backend's base URL, and
+/// an absolute HTTPS URL as it is. Anything else, including `//host/path`, is refused.
+String _resolveEndpoint(String baseUrl, String name, String? value, String fallback) {
+  final endpoint = value ?? '$_defaultBackendBasePath$fallback';
+  if (endpoint.startsWith('/') && !endpoint.startsWith('//')) return '$baseUrl$endpoint';
+  if (_isHttpsUrl(endpoint)) return endpoint;
+  throw IAMException(
+    ThunderIDErrorCode.invalidConfiguration,
+    'endpoints.backend.$name must be a path starting with "/" or an HTTPS URL',
+  );
+}
+
+bool _isHttpsUrl(String url) {
+  final uri = Uri.tryParse(url);
+  return uri != null && uri.scheme == 'https' && uri.host.isNotEmpty;
 }
 
 String _trimTrailingSlashes(String url) => url.replaceFirst(RegExp(r'/+$'), '');
