@@ -695,6 +695,191 @@ void main() {
         },
       ]);
     });
+
+    final kinds = <(AccountLifecycleSubjectKind, AccountLifecycleAction, String)>[
+      (AccountLifecycleSubjectKind.user, AccountLifecycleAction.suspend, 'userSuspendFlow'),
+      (AccountLifecycleSubjectKind.user, AccountLifecycleAction.unsuspend, 'userUnsuspendFlow'),
+      (AccountLifecycleSubjectKind.user, AccountLifecycleAction.unlock, 'userUnlockFlow'),
+      (AccountLifecycleSubjectKind.agent, AccountLifecycleAction.suspend, 'agentSuspendFlow'),
+      (AccountLifecycleSubjectKind.agent, AccountLifecycleAction.unsuspend, 'agentUnsuspendFlow'),
+      (AccountLifecycleSubjectKind.agent, AccountLifecycleAction.unlock, 'agentUnlockFlow'),
+      (AccountLifecycleSubjectKind.application, AccountLifecycleAction.suspend, 'applicationSuspendFlow'),
+      (AccountLifecycleSubjectKind.application, AccountLifecycleAction.unsuspend, 'applicationUnsuspendFlow'),
+    ];
+
+    for (final (kind, action, configKey) in kinds) {
+      test('runAccountLifecycleAction runs the ${kind.name} ${action.name} flow configured under $configKey', () async {
+        final server = FakeServer(config: configured(configKey, 'lifecycle'), flows: [flow('lifecycle', 'flow-9')]);
+
+        await clientFor(server).runAccountLifecycleAction(kind, action, 's-1');
+
+        expect(kind.flowConfigKeys[action], configKey);
+        expect(server.executions, [
+          {
+            'flowId': 'flow-9',
+            'inputs': {'subject': 's-1'},
+          },
+        ]);
+      });
+    }
+
+    test('runAccountLifecycleAction passes the operator note and reports whether the email was sent', () async {
+      final server = FakeServer(
+        config: configured('userSuspendFlow', 'suspend'),
+        flows: [flow('suspend', 'flow-3')],
+        execution: {
+          'flowStatus': 'COMPLETE',
+          'data': {
+            'additionalData': {'emailSent': 'false'},
+          },
+        },
+      );
+
+      final result = await clientFor(server).runAccountLifecycleAction(
+        AccountLifecycleSubjectKind.user,
+        AccountLifecycleAction.suspend,
+        'u-1',
+        operatorNote: 'Ticket 4521',
+      );
+
+      expect(result.emailSent, isFalse);
+      expect(server.executions, [
+        {
+          'flowId': 'flow-3',
+          'inputs': {'subject': 'u-1', 'operatorNote': 'Ticket 4521'},
+        },
+      ]);
+    });
+
+    test('runAccountLifecycleAction fails with the operation error when no flow is configured', () async {
+      final error = await clientFor(FakeServer())
+          .runAccountLifecycleAction(AccountLifecycleSubjectKind.agent, AccountLifecycleAction.unlock, 'a-1')
+          .then<Object?>((_) => null, onError: (Object e) => e);
+
+      expect((error! as AdministrationFlowError).flowCode, 'unlockAgent-NotConfiguredError-001');
+    });
+
+    test('runAccountLifecycleAction refuses to unlock an application without calling the server', () async {
+      final server = FakeServer();
+
+      final error = await clientFor(server)
+          .runAccountLifecycleAction(AccountLifecycleSubjectKind.application, AccountLifecycleAction.unlock, 'app-1')
+          .then<Object?>((_) => null, onError: (Object e) => e);
+
+      expect((error! as IAMException).code, ThunderIDErrorCode.invalidInput);
+      expect(server.requests, isEmpty);
+      expect(AccountLifecycleSubjectKind.application.flowConfigKeys, isNot(contains(AccountLifecycleAction.unlock)));
+    });
+  });
+
+  group('getAccountLifecycleActions', () {
+    const allUserFlows = {
+      'userSuspendFlow': 'f-suspend',
+      'userUnlockFlow': 'f-unlock',
+      'userUnsuspendFlow': 'f-unsuspend',
+    };
+    const user = AccountLifecycleSubjectKind.user;
+    const suspend = AccountLifecycleAction.suspend;
+    const unlock = AccountLifecycleAction.unlock;
+    const unsuspend = AccountLifecycleAction.unsuspend;
+
+    test('offers the actions each status allows, most expected first', () {
+      expect(getAccountLifecycleActions(user, AccessStatusValue.active, allUserFlows), [suspend]);
+      expect(getAccountLifecycleActions(user, AccessStatusValue.locked, allUserFlows), [unlock, suspend]);
+      expect(getAccountLifecycleActions(user, AccessStatusValue.suspended, allUserFlows), [unsuspend]);
+    });
+
+    test('reads an identity with no status as active', () {
+      expect(getAccountLifecycleActions(user, null, allUserFlows), [suspend]);
+    });
+
+    test('offers only the actions whose flow is configured', () {
+      expect(getAccountLifecycleActions(user, AccessStatusValue.locked, {'userSuspendFlow': 'f-suspend'}), [suspend]);
+      expect(getAccountLifecycleActions(user, AccessStatusValue.active, {}), isEmpty);
+    });
+
+    test('reads the flows of the identity kind it is given', () {
+      const agent = AccountLifecycleSubjectKind.agent;
+      expect(getAccountLifecycleActions(agent, AccessStatusValue.active, allUserFlows), isEmpty);
+      expect(
+        getAccountLifecycleActions(agent, AccessStatusValue.locked, {'agentSuspendFlow': 'a', 'agentUnlockFlow': 'b'}),
+        [unlock, suspend],
+      );
+    });
+
+    test('never offers an unlock for an application', () {
+      expect(
+        getAccountLifecycleActions(
+          AccountLifecycleSubjectKind.application,
+          AccessStatusValue.locked,
+          {'applicationSuspendFlow': 'a', 'applicationUnsuspendFlow': 'b'},
+        ),
+        [suspend],
+      );
+    });
+
+    test('offers nothing for a status it does not know', () {
+      expect(getAccountLifecycleActions(user, 'ARCHIVED', allUserFlows), isEmpty);
+    });
+  });
+
+  group('access status', () {
+    test('users and agents read their access status and its details', () {
+      final user = ManagedUser.fromJson({
+        'id': 'u-1',
+        'ouId': 'ou-1',
+        'type': 'customer',
+        'status': {
+          'value': 'LOCKED',
+          'details': {
+            'reason': 'FAILED_ATTEMPTS',
+            'lockedMethods': [
+              {'method': 'password', 'expiresAt': '2026-10-28T10:00:00Z'},
+              {'method': 'account'},
+            ],
+          },
+        },
+      });
+      final agent = Agent.fromJson({
+        'id': 'a-1',
+        'name': 'Bot',
+        'ouId': 'ou-1',
+        'type': 'bot',
+        'status': {
+          'value': 'SUSPENDED',
+          'details': {'reason': 'ADMINISTRATIVE_SUSPENSION', 'operatorNote': 'Ticket 4521', 'since': '2026-10-27'},
+        },
+      });
+
+      expect(user.status?.value, AccessStatusValue.locked);
+      expect(user.status?.details?.reason, AccessHoldReason.failedAttempts);
+      expect(user.status?.details?.lockedMethods?.map((m) => m.method), ['password', 'account']);
+      expect(user.status?.details?.lockedMethods?.first.expiresAt, '2026-10-28T10:00:00Z');
+      expect(agent.status?.value, AccessStatusValue.suspended);
+      expect(agent.status?.details?.operatorNote, 'Ticket 4521');
+      expect(agent.status?.details?.since, '2026-10-27');
+    });
+
+    test('a record without a status, or with a malformed one, has none', () {
+      expect(ManagedUser.fromJson({'id': 'u-1', 'ouId': 'ou-1', 'type': 'customer'}).status, isNull);
+      expect(
+        ManagedUser.fromJson({'id': 'u-1', 'ouId': 'ou-1', 'type': 'customer', 'status': 'ACTIVE'}).status,
+        isNull,
+      );
+      expect(Application.fromJson({'id': 'app-1', 'name': 'Shop', 'status': <String, Object?>{}}).status, isNull);
+    });
+
+    test('an application reads its status and does not keep it to send back', () {
+      final application = Application.fromJson({
+        'id': 'app-1',
+        'name': 'Shop',
+        'status': {'value': 'SUSPENDED'},
+      });
+
+      expect(application.status?.value, AccessStatusValue.suspended);
+      expect(application.additionalFields.containsKey('status'), isFalse);
+      expect(application.toJson().containsKey('status'), isFalse);
+    });
   });
 
   group('connections', () {

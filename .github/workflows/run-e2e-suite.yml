@@ -56,6 +56,9 @@ jobs:
         working-directory: tests/e2e
         env:
           THUNDERID_VERSION: ${{ inputs.thunderid-version }}
+          # Authenticates run-e2e.sh's latest-release lookup. Unauthenticated, it shares the
+          # runner IP's 60-an-hour GitHub API budget and fails before the suite starts.
+          GITHUB_TOKEN: ${{ github.token }}
         run: ./run-e2e.sh
 
       # upload-artifact does not expand `~`, so a path under the home directory silently

@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'package:flutter/widgets.dart';
 
 import '../../management/management_display.dart';
+import '../../models/management/administration.dart';
 import '../../models/management/group.dart';
 import '../../models/management/managed_user.dart';
 import '../../models/management/management_page.dart';
@@ -14,6 +15,7 @@ import '../../models/preferences.dart';
 import '../../state/management_resources.dart';
 import '../../state/resource_notifiers.dart';
 import 'admin_render_state.dart';
+import 'internal/account_lifecycle_parts.dart';
 import 'internal/admin_connected.dart';
 import 'internal/admin_context.dart';
 import 'internal/admin_inputs.dart';
@@ -25,10 +27,12 @@ String _stringify(Object? value) {
   return value.toString();
 }
 
-/// Presentational view of one user: attributes and group memberships.
+/// Presentational view of one user: access status, attributes and group memberships.
 ///
 /// Delete and edit appear only when [onDelete] / [onUpdate] are set, and never for a read-only
-/// user. Delete asks for confirmation first (spec "UI", requirement 6).
+/// user. Delete asks for confirmation first (spec "UI", requirement 6). The account lifecycle
+/// actions in [lifecycleActions] appear only when [onLifecycleAction] is set; they change only
+/// runtime state, so they apply to read-only users too.
 class BaseUserDetails extends StatefulWidget {
   final ManagedUser? user;
   final List<MembershipGroup> groups;
@@ -45,10 +49,19 @@ class BaseUserDetails extends StatefulWidget {
   /// Called with the user's full attribute set after an edit.
   final ValueChanged<Map<String, dynamic>>? onUpdate;
   final bool isUpdating;
+
+  /// The account lifecycle actions to offer (suspend, unsuspend, unlock), shown only with
+  /// [onLifecycleAction].
+  final List<AccountLifecycleAction> lifecycleActions;
+
+  /// Runs an account lifecycle action. Suspending and unsuspending ask for confirmation first,
+  /// and a suspension takes an optional operator note.
+  final AccountLifecycleCallback? onLifecycleAction;
+  final bool isRunningLifecycleAction;
   final List<Widget> actions;
   final ThunderIDPreferences? preferences;
 
-  /// Builds custom UI in place of the default view, from the user, their visible attributes and groups, the loading and error state, and the delete and update callbacks.
+  /// Builds custom UI in place of the default view, from the user, their visible attributes and groups, the loading and error state, and the delete, update and lifecycle callbacks.
   final AdminWidgetBuilder<UserDetailsState>? builder;
 
   const BaseUserDetails({
@@ -62,6 +75,9 @@ class BaseUserDetails extends StatefulWidget {
     this.isDeleting = false,
     this.onUpdate,
     this.isUpdating = false,
+    this.lifecycleActions = const [],
+    this.onLifecycleAction,
+    this.isRunningLifecycleAction = false,
     this.actions = const [],
     this.preferences,
     this.builder,
@@ -99,6 +115,9 @@ class _BaseUserDetailsState extends State<BaseUserDetails> {
           isUpdating: widget.isUpdating,
           onDelete: isWritable ? widget.onDelete : null,
           onUpdate: isWritable ? widget.onUpdate : null,
+          lifecycleActions: widget.onLifecycleAction != null && user != null ? widget.lifecycleActions : const [],
+          onLifecycleAction: user != null ? widget.onLifecycleAction : null,
+          isRunningLifecycleAction: widget.isRunningLifecycleAction,
         ),
       );
     }
@@ -127,6 +146,8 @@ class _BaseUserDetailsState extends State<BaseUserDetails> {
     };
     final canEdit = widget.onUpdate != null && !user.isReadOnly && editable.isNotEmpty;
     final draft = _draft;
+    final onLifecycleAction = widget.onLifecycleAction;
+    final status = user.status?.value;
 
     return AdminSection(
       ac: ac,
@@ -135,6 +156,16 @@ class _BaseUserDetailsState extends State<BaseUserDetails> {
       description: ac.t('admin.users.details.subtitle', {'type': user.type}),
       actions: [
         ...widget.actions,
+        if (onLifecycleAction != null && widget.lifecycleActions.isNotEmpty)
+          AdminLifecycleButtons(
+            ac: ac,
+            actions: widget.lifecycleActions,
+            name: displayName,
+            block: 'user-details',
+            onAction: onLifecycleAction,
+            isRunning: widget.isRunningLifecycleAction,
+            collectsOperatorNote: true,
+          ),
         if (widget.onDelete != null && !user.isReadOnly)
           AdminConfirmButton(
             ac: ac,
@@ -152,6 +183,13 @@ class _BaseUserDetailsState extends State<BaseUserDetails> {
             AdminAvatar(name: displayName, size: 48),
             const SizedBox(width: 12),
             Flexible(child: Text(user.ouHandle ?? user.ouId, style: TextStyle(color: ac.colors.textSecondary))),
+            if (status != null) ...[
+              const SizedBox(width: 12),
+              Semantics(
+                label: ac.t('admin.common.columns.status'),
+                child: AdminAccessStatusLabel(ac: ac, status: status),
+              ),
+            ],
           ],
         ),
         AdminPanel(
@@ -229,12 +267,23 @@ class _BaseUserDetailsState extends State<BaseUserDetails> {
 
 /// User details that loads the user and their groups through the management API.
 ///
-/// Changing data is off by default: set [deletable] to offer delete (with confirmation) and
-/// [editable] to offer editing the user's string attributes.
+/// Changing data is off by default: set [deletable] to offer delete (with confirmation),
+/// [editable] to offer editing the user's string attributes, and [lifecycleActions] to offer
+/// suspend, unsuspend and unlock.
 class UserDetails extends StatefulWidget {
   final String userId;
   final bool deletable;
   final bool editable;
+
+  /// Whether the user can be suspended, unsuspended and unlocked from this view. Each action runs
+  /// through its administration flow and is offered only when the user's status allows it and
+  /// the server configures that flow. The configured flows are read only while this is on, and
+  /// reading them needs a token that may read the server configuration.
+  final bool lifecycleActions;
+
+  /// How the delete runs. [AdministrationMode.flow] runs the user deletion flow the server
+  /// configures, which revokes the user's grants and ends their sessions before the record goes.
+  final AdministrationMode administrationMode;
   final VoidCallback? onDeleted;
   final Set<String> hiddenAttributes;
   final List<Widget> actions;
@@ -248,6 +297,8 @@ class UserDetails extends StatefulWidget {
     required this.userId,
     this.deletable = false,
     this.editable = false,
+    this.lifecycleActions = false,
+    this.administrationMode = AdministrationMode.native,
     this.onDeleted,
     this.hiddenAttributes = const {'password'},
     this.actions = const [],
@@ -264,19 +315,35 @@ class _UserDetailsState extends AdminConnectedState<UserDetails> {
   ResourceQuery<ManagementPage<MembershipGroup>>? _groups;
   ResourceMutation<String, void>? _delete;
   ResourceMutation<UpdateUserVariables, ManagedUser>? _update;
+  AdminLifecycleBinding? _lifecycle;
 
   @override
   void bind(ManagementResources resources) {
     _user = own(resources.userQuery(widget.userId));
     _groups = own(resources.userGroupsQuery(widget.userId, limit: 100));
-    _delete = own(resources.deleteUserMutation(onSuccess: (_, __) => widget.onDeleted?.call()));
+    _delete = own(
+      resources.deleteUserMutation(
+        administrationMode: widget.administrationMode,
+        onSuccess: (_, __) => widget.onDeleted?.call(),
+      ),
+    );
     _update = own(resources.updateUserMutation());
+    _lifecycle = AdminLifecycleBinding(
+      resources,
+      AccountLifecycleSubjectKind.user,
+      enabled: widget.lifecycleActions,
+      own: own,
+    );
   }
 
   @override
   void didUpdateWidget(UserDetails oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.userId != widget.userId) rebind();
+    if (oldWidget.userId != widget.userId ||
+        oldWidget.lifecycleActions != widget.lifecycleActions ||
+        oldWidget.administrationMode != widget.administrationMode) {
+      rebind();
+    }
   }
 
   @override
@@ -285,6 +352,7 @@ class _UserDetailsState extends AdminConnectedState<UserDetails> {
     final user = _user?.data;
     final delete = _delete;
     final update = _update;
+    final lifecycle = _lifecycle;
     return BaseUserDetails(
       user: user,
       groups: _groups?.data?.items ?? const [],
@@ -293,7 +361,8 @@ class _UserDetailsState extends AdminConnectedState<UserDetails> {
           ? ac.t('admin.users.details.error')
           : toManagementErrorMessage(ac.t, _user?.error, 'admin.users.details.error') ??
               toManagementErrorMessage(ac.t, delete?.error, 'admin.users.details.delete.error') ??
-              toManagementErrorMessage(ac.t, update?.error, 'admin.users.details.edit.error'),
+              toManagementErrorMessage(ac.t, update?.error, 'admin.users.details.edit.error') ??
+              lifecycle?.error(ac),
       isDeleting: delete?.isLoading ?? false,
       onDelete: widget.deletable && delete != null ? () => unawaited(delete.mutate(widget.userId)) : null,
       isUpdating: update?.isLoading ?? false,
@@ -307,6 +376,9 @@ class _UserDetailsState extends AdminConnectedState<UserDetails> {
                 ),
               )
           : null,
+      lifecycleActions: lifecycle?.actions(user?.status?.value) ?? const [],
+      onLifecycleAction: lifecycle?.handler(widget.userId),
+      isRunningLifecycleAction: lifecycle?.isRunning ?? false,
       hiddenAttributes: widget.hiddenAttributes,
       actions: widget.actions,
       preferences: widget.preferences,
