@@ -1,10 +1,10 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import '../management/account_lifecycle.dart';
-import '../management/administration_flows.dart';
-import '../management/management_transport.dart';
-import '../management/thunderid_management_client.dart';
+import '../api/management/account_lifecycle.dart';
+import '../api/management/administration_flows.dart';
+import '../api/management/management_transport.dart';
+import '../api/management/thunderid_management_client.dart';
 import '../models/management/administration.dart';
 import '../models/management/agent.dart';
 import '../models/management/application.dart';
@@ -32,6 +32,13 @@ abstract final class ManagementQueryKeys {
   static const String application = 'application';
   static const String applications = 'applications';
   static const String administrationFlows = 'administration-flows';
+  static const String project = 'project';
+  static const String projects = 'projects';
+  static const String organizationUnit = 'organization-unit';
+  static const String organizationUnits = 'organization-units';
+  static const String organizationUnitMembers = 'organization-unit-members';
+  static const String sharingPolicies = 'sharing-policies';
+  static const String overlayRules = 'overlay-rules';
 }
 
 /// Variables of [ManagementResources.updateUserMutation].
@@ -247,13 +254,15 @@ class ManagementResources {
         onError,
       );
 
+  /// Deletes a group. [administrationMode] picks how (see [ThunderIDManagementClient.deleteGroup]).
   ResourceMutation<String, void> deleteGroupMutation({
     void Function(void data, String groupId)? onSuccess,
     void Function(Object error, String groupId)? onError,
+    AdministrationMode administrationMode = AdministrationMode.native,
     ManagementFetcher? fetcher,
   }) =>
       _mutation(
-        (String groupId) => client.deleteGroup(groupId, fetcher: fetcher),
+        (String groupId) => client.deleteGroup(groupId, administrationMode: administrationMode, fetcher: fetcher),
         (_) => [
           [ManagementQueryKeys.groups],
           [ManagementQueryKeys.memberships],
@@ -370,13 +379,15 @@ class ManagementResources {
         onError,
       );
 
+  /// Deletes a role. [administrationMode] picks how (see [ThunderIDManagementClient.deleteRole]).
   ResourceMutation<String, void> deleteRoleMutation({
     void Function(void data, String roleId)? onSuccess,
     void Function(Object error, String roleId)? onError,
+    AdministrationMode administrationMode = AdministrationMode.native,
     ManagementFetcher? fetcher,
   }) =>
       _mutation(
-        (String roleId) => client.deleteRole(roleId, fetcher: fetcher),
+        (String roleId) => client.deleteRole(roleId, administrationMode: administrationMode, fetcher: fetcher),
         (_) => [
           [ManagementQueryKeys.roles],
           [ManagementQueryKeys.roleAssignments],
@@ -423,16 +434,22 @@ class ManagementResources {
 
   // ── Agents ──────────────────────────────────────────────────────────────
 
+  /// [projectId] lists one project's agents; the server takes no [filter] with it other than one
+  /// on `ouId`.
   ResourceQuery<ManagementPage<Agent>> agentsQuery({
     String? filter,
+    String? projectId,
     int? limit,
     int? offset,
     bool enabled = true,
     ManagementFetcher? fetcher,
   }) =>
       _query(
-        [ManagementQueryKeys.agents, {'filter': filter, 'limit': limit, 'offset': offset}],
-        () => client.getAgents(filter: filter, limit: limit, offset: offset, fetcher: fetcher),
+        [
+          ManagementQueryKeys.agents,
+          {'filter': filter, 'projectId': projectId, 'limit': limit, 'offset': offset},
+        ],
+        () => client.getAgents(filter: filter, projectId: projectId, limit: limit, offset: offset, fetcher: fetcher),
         enabled,
       );
 
@@ -525,15 +542,17 @@ class ManagementResources {
 
   // ── Applications ────────────────────────────────────────────────────────
 
+  /// [projectId] lists one project's applications.
   ResourceQuery<ManagementPage<BasicApplication>> applicationsQuery({
+    String? projectId,
     int? limit,
     int? offset,
     bool enabled = true,
     ManagementFetcher? fetcher,
   }) =>
       _query(
-        [ManagementQueryKeys.applications, {'limit': limit, 'offset': offset}],
-        () => client.getApplications(limit: limit, offset: offset, fetcher: fetcher),
+        [ManagementQueryKeys.applications, {'projectId': projectId, 'limit': limit, 'offset': offset}],
+        () => client.getApplications(projectId: projectId, limit: limit, offset: offset, fetcher: fetcher),
         enabled,
       );
 

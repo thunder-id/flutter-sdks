@@ -50,14 +50,21 @@ class EmbeddedFlowRequestConfig {
   final String applicationId;
   final FlowType flowType;
 
+  /// Bounds an [FlowType.authentication] flow to this organization unit. Sent as `ouId` on the
+  /// request that starts the flow only, never on a continuation. Unset, the flow decides the unit
+  /// itself, for example through a Resolve OU step.
+  final String? organizationUnitId;
+
   const EmbeddedFlowRequestConfig({
     required this.applicationId,
     this.flowType = FlowType.authentication,
+    this.organizationUnitId,
   });
 
   Map<String, dynamic> toMap() => {
         'applicationId': applicationId,
         'flowType': flowType.value,
+        if (organizationUnitId != null) 'ouId': organizationUnitId,
       };
 }
 
@@ -74,6 +81,10 @@ class EmbeddedFlowResponse {
   /// The `error.message` object: the key to translate before showing [failureReason].
   final FlowErrorText? errorMessage;
 
+  /// The `error.code` the flow returned with this step, such as `FET-1131` for a device code that
+  /// is wrong or no longer usable. `null` when the step carries no error.
+  final String? errorCode;
+
   const EmbeddedFlowResponse({
     this.flowId,
     required this.flowStatus,
@@ -84,6 +95,7 @@ class EmbeddedFlowResponse {
     this.failureReason,
     this.challengeToken,
     this.errorMessage,
+    this.errorCode,
   });
 
   /// The `data.additionalData` block, if present. Carries the WebAuthn/passkey ceremony
@@ -109,6 +121,9 @@ class EmbeddedFlowResponse {
       failureReason: map['failureReason'] as String?,
       challengeToken: map['challengeToken'] as String?,
       errorMessage: FlowErrorText.fromMap((map['error'] as Map?)?['message']),
+      errorCode: (map['error'] is Map && (map['error'] as Map)['code'] is String)
+          ? (map['error'] as Map)['code'] as String
+          : null,
     );
   }
 }

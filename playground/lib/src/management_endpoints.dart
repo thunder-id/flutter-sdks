@@ -17,7 +17,7 @@ class ResolvedEndpoint {
 /// Asks the SDK itself where each management collection resolves.
 ///
 /// The SDK has no public resolver, so each list call (a dry-run import and an empty export for
-/// those two collections) is sent through a per-call fetcher that
+/// those two collections, and a client registration read for that one) is sent through a per-call fetcher that
 /// records the URL and answers with an empty page. Nothing reaches the network, and the URLs are
 /// exactly the ones a real call would use: [ThunderIDConfig.endpoints] first, then `baseUrl`.
 Future<List<ResolvedEndpoint>> resolveManagementEndpoints(ThunderIDManagementClient management) async {
@@ -45,6 +45,12 @@ Future<List<ResolvedEndpoint>> resolveManagementEndpoints(ThunderIDManagementCli
     ManagementEndpointKeys.import: (f) =>
         management.importConfiguration(const ImportConfigurationRequest(dryRun: true), fetcher: f),
     ManagementEndpointKeys.export: (f) => management.exportConfiguration(const ExportConfigurationRequest(), fetcher: f),
+    ManagementEndpointKeys.credentialConfigurations: (f) => management.getCredentialConfigurations(fetcher: f),
+    ManagementEndpointKeys.presentationDefinitions: (f) => management.getPresentationDefinitions(fetcher: f),
+    // Registration has no listing; reading a placeholder client only resolves the URL.
+    ManagementEndpointKeys.clientRegistrations: (f) => management.getClientRegistration('client', fetcher: f),
+    ManagementEndpointKeys.projects: (f) => management.getProjects(limit: 1, fetcher: f),
+    ManagementEndpointKeys.authorizationDetailTypes: (f) => management.getAuthorizationDetailTypes(limit: 1, fetcher: f),
   };
   final resolved = <ResolvedEndpoint>[];
   for (final entry in calls.entries) {

@@ -39,6 +39,21 @@ class RoleResourcePermissions {
   Map<String, dynamic> toJson() => {'resourceServerId': resourceServerId, 'permissions': permissions};
 }
 
+/// One permission on one resource server: what a role permissions view adds or removes.
+class RolePermission {
+  final String resourceServerId;
+  final String permission;
+
+  const RolePermission({required this.resourceServerId, required this.permission});
+
+  @override
+  bool operator ==(Object other) =>
+      other is RolePermission && other.resourceServerId == resourceServerId && other.permission == permission;
+
+  @override
+  int get hashCode => Object.hash(resourceServerId, permission);
+}
+
 /// An identity a role is assigned to. Used both as a returned record and as the input to add or
 /// remove an assignment, in which case only [id] and [type] are sent.
 class RoleAssignment {

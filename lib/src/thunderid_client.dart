@@ -3,13 +3,21 @@
 
 import 'dart:async';
 
+import 'package:flutter/services.dart';
+
+import 'api/account/organization_units.dart' as account;
+import 'api/auth/device_grant_flow.dart';
+import 'api/management/management_transport.dart';
+import 'api/management/permissions.dart';
+import 'api/management/thunderid_management_client.dart';
 import 'backend/backend_client.dart';
 import 'backend/backend_http_client.dart';
 import 'backend/http_transport.dart';
 import 'backend/resolve_backend_endpoints.dart';
 import 'channel/thunderid_channel.dart';
-import 'management/permissions.dart';
-import 'management/thunderid_management_client.dart';
+import 'models/account/organization_unit.dart';
+import 'models/ciba.dart';
+import 'models/device_authorization.dart';
 import 'models/flow_models.dart';
 import 'models/http_request.dart';
 import 'models/sign_in_options.dart';
@@ -29,6 +37,7 @@ import 'models/user_profile.dart';
 class ThunderIDClient {
   final ThunderIDChannel _channel;
   final HttpTransport _httpTransport;
+  final HttpTransport? _injectedTransport;
   final DateTime Function() _now;
   bool _initialized = false;
   bool _isLoading = false;
@@ -49,6 +58,7 @@ class ThunderIDClient {
     DateTime Function()? clock,
   })  : _channel = channel ?? ThunderIDChannel(),
         _httpTransport = httpTransport ?? ioHttpTransport,
+        _injectedTransport = httpTransport,
         _now = clock ?? DateTime.now;
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -90,11 +100,27 @@ class ThunderIDClient {
   }) async {
     _requireInitialized();
     _refuseOnBackend('The embedded sign-in flow');
+    final requestMap = request.toMap();
+    final ouId = request.organizationUnitId;
+    if (ouId != null) {
+      // The unit bounds the flow from its first request; a continuation never carries it.
+      if (payload.flowId != null) {
+        requestMap.remove('ouId');
+      } else {
+        _requireOrganizationUnitId('signIn', ouId);
+        if (request.flowType != FlowType.authentication) {
+          throw const IAMException(
+            ThunderIDErrorCode.invalidInput,
+            'signIn: organizationUnitId bounds an AUTHENTICATION flow only.',
+          );
+        }
+      }
+    }
     _isLoading = true;
     try {
       final result = await _channel.invokeMap('signIn', {
         'payload': payload.toMap(),
-        'request': request.toMap(),
+        'request': requestMap,
         if (sessionId != null) 'sessionId': sessionId,
       });
       return EmbeddedFlowResponse.fromMap(result);
@@ -168,11 +194,16 @@ class ThunderIDClient {
   /// custom tab, then call [handleRedirectCallback] with the callback URL.
   ///
   /// When sign-in runs on a backend, this is the backend's sign-in URL, bound to a fresh PKCE
-  /// pair; [options] do not apply to it. [signInWithRedirect] opens it and completes sign-in.
+  /// pair; of [options], only [SignInOptions.organizationUnitId] applies to it, as the `ouId`
+  /// query parameter. [signInWithRedirect] opens it and completes sign-in.
+  ///
+  /// [SignInOptions.organizationUnitId] bounds the sign-in to that organization unit.
   Future<String> buildSignInUrl({SignInOptions? options}) async {
     _requireInitialized();
+    final ouId = options?.organizationUnitId;
+    if (ouId != null) _requireOrganizationUnitId('signIn', ouId);
     final backend = _backend;
-    if (backend != null) return backend.buildSignInUrl();
+    if (backend != null) return backend.buildSignInUrl(organizationUnitId: ouId);
     final result = await _channel.invoke<String>('buildSignInUrl', {
       if (options != null) 'options': options.toMap(),
     });
@@ -258,6 +289,177 @@ class ThunderIDClient {
   void Function() onSignOut(void Function() listener) {
     _signOutListeners.add(listener);
     return () => _signOutListeners.remove(listener);
+  }
+
+  // ── Organization units ────────────────────────────────────────────────────
+
+  /// Signs in again bounded to the organization unit [organizationUnitId], and returns the user of
+  /// the new session.
+  ///
+  /// The server reuses the single sign-on session when the user can sign in to that unit, so
+  /// normally no credentials are asked for. On success the tokens are replaced (the refresh token
+  /// is bound to the unit) and the user is read again; call [ThunderIDState.refresh] or let
+  /// [OrganizationUnitSwitcher] do it to update the widgets.
+  ///
+  /// On failure the previous session stays as it was. A unit that does not exist and one the
+  /// application cannot be used from both raise [ThunderIDErrorCode.organizationUnitUnavailable],
+  /// since the server answers both with `unauthorized_client`; a closed browser raises
+  /// [ThunderIDErrorCode.federatedAuthCancelled]. [options] carries any other sign-in parameter.
+  Future<User> switchOrganizationUnit(String organizationUnitId, {SignInOptions? options}) async {
+    _requireInitialized();
+    final ouId = _requireOrganizationUnitId('switchOrganizationUnit', organizationUnitId);
+    final url = await buildSignInUrl(
+      options: (options ?? const SignInOptions()).copyWith(organizationUnitId: ouId),
+    );
+    final callbackUrl = await _channel.invoke<String>('openAuthSession', {'url': url});
+    if (callbackUrl == null || callbackUrl.isEmpty) {
+      throw const IAMException(ThunderIDErrorCode.invalidRedirectUri, 'The browser session returned no callback');
+    }
+    // A refused sign-in comes back as an error redirect. It is answered here, before anything
+    // reaches the session, so the previous session is left untouched.
+    final error = Uri.tryParse(callbackUrl)?.queryParameters['error'];
+    if (error == 'unauthorized_client') {
+      throw const IAMException(
+        ThunderIDErrorCode.organizationUnitUnavailable,
+        'The organization unit cannot be signed in to from this application',
+      );
+    }
+    if (error != null) {
+      throw IAMException(
+        ThunderIDErrorCode.authenticationFailed,
+        'The sign-in to the organization unit was refused: $error',
+      );
+    }
+    return handleRedirectCallback(callbackUrl);
+  }
+
+  /// The organization units the signed-in user can access, from `GET /users/me/ous`, with the
+  /// unit the list is relative to in [AccessibleOrganizationUnitList.current].
+  ///
+  /// [scope] narrows the list ([AccessibleOrganizationUnitScope.siblings]: the current unit and the
+  /// accessible units that share its parent); [limit] and [offset] page it. Uses the same transport
+  /// as [management], so [ThunderIDConfig.http]'s fetcher applies.
+  Future<AccessibleOrganizationUnitList> getAccessibleOrganizationUnits({
+    AccessibleOrganizationUnitScope? scope,
+    int? limit,
+    int? offset,
+  }) async {
+    _requireInitialized();
+    _refuseOnBackend('getAccessibleOrganizationUnits');
+    final client = management;
+    return account.getAccessibleOrganizationUnits(
+      baseUrl: client.baseUrl,
+      fetcher: client.fetcher,
+      scope: scope,
+      limit: limit,
+      offset: offset,
+    );
+  }
+
+  /// The organization unit the signed-in session was issued for, from its `ouId`, `ouHandle` and
+  /// `ouName` claims, or `null` when no one is signed in or the claims are absent.
+  ///
+  /// For display only: never base an authorization decision on it.
+  Future<CurrentOrganizationUnit?> getCurrentOrganizationUnit() async {
+    _requireInitialized();
+    if (!await isSignedIn()) return null;
+    return CurrentOrganizationUnit.fromClaims((await getUser()).claims);
+  }
+
+  // ── Backchannel and device authorization ──────────────────────────────────
+
+  /// Starts a Client-Initiated Backchannel Authentication request (CIBA, poll mode) at the
+  /// `backchannel_authentication_endpoint` the server's discovery metadata names, and returns the
+  /// `authReqId` with its lifetime and polling interval. Poll it with [pollCIBA].
+  ///
+  /// The SDK holds no client secret, so this works only for an application registered as a public
+  /// client (`token_endpoint_auth_method: none`); a confidential registration is unsupported and
+  /// the server refuses it. A server whose metadata has no backchannel endpoint raises
+  /// [ThunderIDErrorCode.operationNotSupported], as does a native SDK without CIBA.
+  Future<CIBAInitiateResponse> initiateCIBA(CIBAInitiateOptions options) async {
+    _requireInitialized();
+    _refuseOnBackend('initiateCIBA');
+    options.validate();
+    return CIBAInitiateResponse.fromMap(await _invokeNativeOperation('initiateCIBA', {'options': options.toMap()}));
+  }
+
+  /// Polls the token endpoint with the `urn:openid:params:grant-type:ciba` grant for [authReqId],
+  /// no more often than every [interval] seconds and slowing down on `slow_down`, until the user
+  /// approves, denies or the request expires after [expiresIn] seconds. On approval the tokens are
+  /// stored as a sign-in stores them, and returned.
+  ///
+  /// A denial or an expiry raises [IAMException] with the server's `error` in its message.
+  Future<TokenResponse> pollCIBA(String authReqId, int interval, {int? expiresIn}) async {
+    _requireInitialized();
+    _refuseOnBackend('pollCIBA');
+    if (authReqId.trim().isEmpty) {
+      throw const IAMException(ThunderIDErrorCode.invalidInput, 'pollCIBA: an authReqId is required.');
+    }
+    return TokenResponse.fromMap(
+      await _invokeNativeOperation('pollCIBA', {
+        'authReqId': authReqId,
+        'interval': interval < 1 ? 1 : interval,
+        if (expiresIn != null) 'expiresIn': expiresIn,
+      }),
+    );
+  }
+
+  /// Starts a device authorization request (RFC 8628) at `/oauth2/device-authorize`, for an
+  /// input-constrained device such as a TV. Show the returned user code and verification URI, and
+  /// poll with [pollDeviceAuthorization]. [scopes] defaults to [ThunderIDConfig.scopes].
+  ///
+  /// The device code it returns is a credential: never show or log it.
+  Future<DeviceAuthorization> startDeviceAuthorization({List<String>? scopes}) async {
+    _requireInitialized();
+    _refuseOnBackend('startDeviceAuthorization');
+    return DeviceAuthorization.fromMap(
+      await _invokeNativeOperation('startDeviceAuthorization', {if (scopes != null) 'scopes': scopes}),
+    );
+  }
+
+  /// Polls the token endpoint with the `urn:ietf:params:oauth:grant-type:device_code` grant for
+  /// [authorization], under the same rules as [pollCIBA], and stores the tokens on success.
+  Future<TokenResponse> pollDeviceAuthorization(DeviceAuthorization authorization) async {
+    _requireInitialized();
+    _refuseOnBackend('pollDeviceAuthorization');
+    return TokenResponse.fromMap(
+      await _invokeNativeOperation('pollDeviceAuthorization', {
+        'deviceCode': authorization.deviceCode,
+        'interval': authorization.interval < 1 ? 1 : authorization.interval,
+        'expiresIn': authorization.expiresIn,
+      }),
+    );
+  }
+
+  /// Runs one step of the server's `DEVICE_GRANT` flow, so the user approves a device by the code
+  /// it shows. Driven like any embedded flow.
+  ///
+  /// The first call starts the flow for [applicationId] (defaulting to
+  /// [ThunderIDConfig.applicationId]) with [userCode] when the user has typed it. Later calls pass
+  /// the previous response's `flowId` as [flowId], with the step's [actionId], [inputs] and
+  /// [challengeToken]. When the flow ends, the device is told the outcome; a refused flow comes
+  /// back as a [FlowStatus.error] response.
+  Future<EmbeddedFlowResponse> verifyDeviceCode({
+    String? userCode,
+    String? applicationId,
+    String? flowId,
+    String? actionId,
+    Map<String, String> inputs = const {},
+    String? challengeToken,
+  }) async {
+    _requireInitialized();
+    _refuseOnBackend('verifyDeviceCode');
+    final config = _config!;
+    return executeDeviceGrantFlow(
+      baseUrl: config.baseUrl,
+      fetcher: _flowFetcher(config),
+      applicationId: applicationId ?? config.applicationId,
+      userCode: userCode,
+      executionId: flowId,
+      actionId: actionId,
+      inputs: inputs,
+      challengeToken: challengeToken,
+    );
   }
 
   // ── Registration ──────────────────────────────────────────────────────────
@@ -504,6 +706,42 @@ class ThunderIDClient {
       ThunderIDErrorCode.operationNotSupported,
       '$operation is not available when sign-in runs on a backend',
     );
+  }
+
+  /// The organization unit id, or [ThunderIDErrorCode.invalidInput] when it is blank.
+  String _requireOrganizationUnitId(String operation, String organizationUnitId) {
+    if (organizationUnitId.trim().isEmpty) {
+      throw IAMException(ThunderIDErrorCode.invalidInput, '$operation: an organization unit id is required.');
+    }
+    return organizationUnitId;
+  }
+
+  /// Calls an operation the native SDK carries out. A native SDK that does not implement it raises
+  /// [ThunderIDErrorCode.operationNotSupported] rather than the channel's missing plugin error.
+  Future<Map<dynamic, dynamic>> _invokeNativeOperation(String method, Map<String, dynamic> args) async {
+    try {
+      return await _channel.invokeMap(method, args);
+    } on MissingPluginException {
+      throw IAMException(
+        ThunderIDErrorCode.operationNotSupported,
+        '$method is not supported by the native ThunderID SDK on this platform',
+      );
+    }
+  }
+
+  /// The transport for the flow requests the Dart layer sends itself. They carry no access token.
+  ManagementFetcher _flowFetcher(ThunderIDConfig config) {
+    final transport = _injectedTransport;
+    if (transport == null) {
+      return createAuthenticatedFetcher(
+        () async => '',
+        allowInsecureConnections: config.allowInsecureConnections,
+      );
+    }
+    return (request) async {
+      final response = await transport(request.method, request.url, request.headers, request.body);
+      return ManagementResponse(statusCode: response.statusCode, body: response.body);
+    };
   }
 
   void _requireInitialized() {

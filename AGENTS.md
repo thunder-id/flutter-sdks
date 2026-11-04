@@ -103,14 +103,22 @@ lib/
       token_response.dart       Token exchange result
       token_exchange_config.dart Token swap config
       flow_models.dart          FlowType, FlowStatus, embedded-flow types
-      sign_in_options.dart      Optional sign-in customization
+      sign_in_options.dart      Optional sign-in customization (incl. organizationUnitId)
+      ciba.dart                 CIBA request options and response
+      device_authorization.dart Device authorization (RFC 8628) device-side result
+      account/organization_unit.dart  Accessible and current organization units
       sign_out_options.dart     Optional sign-out customization
       preferences.dart          ThemePreferences + I18nPreferences
     i18n/
       thunderid_i18n.dart       Locale resolution chain
-      default_strings.dart      Built-in English strings
+      default_strings.dart      Built-in English strings (the key set every locale translates)
+      built_in_strings.dart     Shipped locales (the JS SDK's set) and the built-in bundle lookup
+      translations/             One bundle per shipped non-English locale (fr_fr.dart, ja_jp.dart, ...)
     flow_template_resolver.dart Embedded-flow URL builder
-    management/                 Management operations (users, user types, groups, roles, agents,
+    api/account/                The signed-in user's own data over HTTP (organization_units.dart: /users/me/ous)
+    api/auth/                   Auth flows and reads the Dart layer runs itself (device_grant_flow.dart:
+                                verifyDeviceCode; authorization_details_types.dart: the RFC 9396 types)
+    api/management/             Management operations (users, user types, groups, roles, agents,
                                 agent types, applications, and the resource families below)
       thunderid_management_client.dart  CRUD + relationship operations over HTTP, administrationMode
       management_collection.dart        URL resolution + send shared by the client and its extensions
@@ -118,7 +126,9 @@ lib/
       account_lifecycle.dart            Flow-only suspend/unsuspend/unlock for users, agents, applications
       organization_units.dart, resource_servers.dart, connections.dart, flows.dart,
       notification_templates.dart, design.dart, translations.dart, server_config.dart,
-      gateways.dart, variables.dart, configuration.dart, sharing.dart
+      gateways.dart, variables.dart, configuration.dart, sharing.dart,
+      credential_configurations.dart, presentation_definitions.dart, client_registrations.dart,
+      projects.dart, authorization_detail_types.dart
                                         One extension on ThunderIDManagementClient per resource family
       secrets.dart                      Secret generation + delegated-agent rule (package-internal)
       management_transport.dart         ManagementFetcher + default authenticated transport
@@ -128,25 +138,31 @@ lib/
                                 administration constants, ManagementPage, and one model file per
                                 resource family (organization_unit.dart, connection.dart, ...)
     state/                      ResourceQuery/ResourceMutation notifiers, ManagementResources
-    widgets/                    Grouped by function; test/widgets/ mirrors this layout
-      thunderid_provider.dart   State provider (InheritedWidget root), shared by every group
+      hierarchy_resources.dart  Project, organization unit and sharing policy queries and mutations
+    components/                 Grouped by function; test/components/ mirrors this layout
+      thunderid_provider.dart   State provider (InheritedWidget root), shared by every group; holds the
+                                current project (currentProject / setCurrentProject, in memory)
       auth/                     Sign-in, sign-up and redirect handling
         sign_in.dart            Embedded sign-in form
         sign_up.dart            Embedded sign-up form
         callback.dart           OAuth2 redirect handler
         federated_redirect.dart Federated (social) redirect step shared by SignIn and SignUp
+        device_grant.dart       DeviceGrant: the user side of device authorization (verifyDeviceCode)
         buttons/                SignIn/SignUp/SignOutButton and the social/passkey provider buttons
         flow/                   Flow-step rendering (FlowForm: fields, error banner, key-value list, ...)
         guards/                 SignedIn, SignedOut, Loading
       account/                  The signed-in user's own widgets (UserObject, UserAvatar,
-                                UserDropdown, UserProfile, ChangeCredential)
-      admin/                    Admin components (UserList, GroupMembers, RoleAssignments, ...)
-        internal/               Plumbing shared only by the admin components
+                                UserDropdown, UserProfile, ChangeCredential, OrganizationUnitSwitcher)
+      management/               Management components (UserList, GroupMembers, RoleAssignments, ...)
+        projects/               ProjectList, ProjectCreate, ProjectDetails, ProjectSwitcher
+        organization_units/     OrganizationUnitList, OrganizationUnitCreate, OrganizationUnitDetails
+        sharing/                SharingPolicies (users, applications, roles, flows) and its parts
+        internal/               Plumbing shared only by the management components
       common/                   LanguageSwitcher and the logo/ branding widgets (ThunderIDLogo, AvatarLogo)
       internal/                 Plumbing shared by more than one widget (account_style.dart)
 android/                        Kotlin method channel handler (JVM 17, minSdk 26)
 ios/Classes/                    Swift method channel handler (iOS 16+)
-test/                           Unit tests (flutter_test + mockito); widget tests live under test/widgets/
+test/                           Unit tests (flutter_test + mockito); widget tests live under test/components/
 tests/e2e/                      Maestro E2E suite; fetches the Quickstart sample from thunder-id/samples
 playground/                     Development app (checks, component explorer, session, logs) built from this checkout
 pubspec.yaml                    SDK package manifest
@@ -155,9 +171,9 @@ analysis_options.yaml           Lint configuration
 
 ## Architecture
 
-- **Layer 1 — Client** (`thunderid_client.dart`): public Dart API — initialization, auth flows, token management, user/profile access. Delegates all protocol logic to native SDKs. The one exception is management operations (`management/`), which call the management API from Dart with the access token the native SDK hands out, so `http.fetcher` can replace their transport.
+- **Layer 1 — Client** (`thunderid_client.dart`): public Dart API — initialization, auth flows, token management, user/profile access. Delegates all protocol logic to native SDKs. The exceptions are the management operations (`api/management/`) and the account data layer (`api/account/`), which call the server from Dart with the access token the native SDK hands out, so `http.fetcher` can replace their transport, and the user side of device authorization (`api/auth/`), which runs the `DEVICE_GRANT` flow from Dart without a token. An operation that needs a native capability the pinned native SDK lacks is refused in the channel handler with `OPERATION_NOT_SUPPORTED`, never silently dropped.
 - **Layer 2 — Channel** (`channel/thunderid_channel.dart`): `MethodChannel('dev.thunderid/sdk')` bridge. Converts `PlatformException` → `IAMException` and handles typed deserialization.
-- **Layer 3 — Widgets** (`widgets/`): Flutter UI components built on `InheritedWidget` (`ThunderIDProvider`).
+- **Layer 3 — Widgets** (`components/`): Flutter UI components built on `InheritedWidget` (`ThunderIDProvider`).
 - **Layer 4 — Sample** ([`thunder-id/samples` `quickstarts/flutter`](https://github.com/thunder-id/samples/tree/main/quickstarts/flutter)): standalone demo app that depends on the published SDK. `tests/e2e/scripts/prepare-sample.sh` fetches it and overrides that dependency with this checkout.
 
 Every widget ships in two variants:
@@ -175,7 +191,10 @@ The [SDK development specification](https://github.com/thunder-id/thunderid/blob
 3. **Accepts a custom render on both variants.** Passing it replaces the built-in UI, while the component keeps its data loading, state and actions. The mechanism is the platform's own:
    - Flutter: an optional `builder`, the same pattern as `BaseSignIn`.
    It receives everything needed to draw the component: rows, columns, paging (`limit`, `offset`, `totalResults`, page change) and selection for a list; values, setters, submit and validity for a form; the record and the actions the app has allowed for a details, members, assignments or permissions view; plus loading and error state. Behaviour the specification requires still holds under a custom render: data-changing actions are off unless the app turns them on, a delete asks for confirmation, and server errors appear as translated messages.
-4. **Takes every string from the translation bundle**, in every shipped locale.
+4. **Takes every string from the translation bundle**, in every shipped locale: add the English
+   string to `i18n/default_strings.dart` and its translation to every bundle under
+   `i18n/translations/` (reuse the JavaScript SDK's translation when it has the same key or the
+   same English text). `test/i18n_test.dart` fails on a key a locale lacks.
 5. **Tags elements rendered from a server-described flow step** with `thunderid-field-<id>` and `thunderid-action-<ref>`.
 6. **Has tests** for the built-in UI and for a custom render (`flutter test` widget tests).
 7. **Has a playground story,** including a **Custom rendering** variant drawn with the platform's own UI toolkit, and a capability check if it calls the server.
@@ -187,7 +206,7 @@ A component that changes here usually needs the same change in the sibling SDKs.
 The quickstarts and integration samples live in [thunder-id/samples](https://github.com/thunder-id/samples), and each one pins a released version of this SDK. A change here therefore can't break a sample until the sample bumps its version, which is exactly when a break would surface for a real app. Before raising a pull request, check every sample that uses this SDK:
 
 - **A sample stops compiling or behaving the same** (a renamed type or package, a changed signature, a moved default): raise a samples pull request that bumps the SDK version and fixes the sample. Keep it as a draft until the SDK release it needs is out.
-- **The change adds something a sample exists to show** (a self-care capability for `self-care/account`, a management component or operation for `b2b/manage`, a new sign-in option for the quickstarts): update that sample in the same samples pull request, so it demonstrates the new capability rather than working around its absence.
+- **The change adds something a sample exists to show** (a self-care capability for `self-care/account`, a management component or operation for `management/admin`, a new sign-in option for the quickstarts): update that sample in the same samples pull request, so it demonstrates the new capability rather than working around its absence.
 - Link the samples pull request from this pull request's **Related PRs**, or say why no sample is affected.
 
 ## Code style

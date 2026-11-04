@@ -1605,7 +1605,7 @@ void main() {
 
   group('endpoint keys', () {
     test('every collection has a key and an EndpointsConfig field', () {
-      expect(ManagementEndpointKeys.values, hasLength(21));
+      expect(ManagementEndpointKeys.values, hasLength(26));
       const config = EndpointsConfig(
         organizationUnits: 'https://e/ou',
         resourceServers: 'https://e/rs',
@@ -1621,6 +1621,11 @@ void main() {
         configurationVersions: 'https://e/cv',
         import: 'https://e/in',
         export: 'https://e/out',
+        credentialConfigurations: 'https://e/vci',
+        presentationDefinitions: 'https://e/vp',
+        clientRegistrations: 'https://e/dcr',
+        projects: 'https://e/p',
+        authorizationDetailTypes: 'https://e/adt',
       );
       expect(config.collections.keys.toSet(), ManagementEndpointKeys.values.skip(7).toSet());
     });
