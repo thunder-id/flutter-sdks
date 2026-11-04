@@ -480,10 +480,11 @@ final List<ComponentDef> adminComponentDefs = [
     id: 'groupMembers',
     name: 'GroupMembers',
     category: 'Admin',
-    defaults: const {'groupId': '', 'editable': true, 'administrationMode': 'native', 'state': 'data'},
+    defaults: const {'groupId': '', 'editable': true, 'ouId': '', 'administrationMode': 'native', 'state': 'data'},
     controls: const [
       ControlDef.text('groupId'),
       ControlDef.toggle('editable'),
+      ControlDef.text('ouId'),
       ControlDef.choice('administrationMode', _administrationModes),
     ],
     stories: const [
@@ -509,6 +510,7 @@ final List<ComponentDef> adminComponentDefs = [
         key: ValueKey('groupMembers/$groupId/${s.flag('editable')}'),
         groupId: groupId,
         editable: s.flag('editable'),
+        ouId: _opt(s, 'ouId'),
         administrationMode: _mode(s),
         preferences: _prefs(s),
       );
@@ -524,6 +526,7 @@ final List<ComponentDef> adminComponentDefs = [
         : _snippet('GroupMembers', [
             'groupId: ${lit(_id(s, 'groupId', 'group').isEmpty ? 'group-id' : _id(s, 'groupId', 'group'))}',
             if (s.flag('editable')) 'editable: true',
+            if (_opt(s, 'ouId') != null) 'ouId: ${lit(_opt(s, 'ouId')!)}',
             if (_mode(s) == AdministrationMode.flow) 'administrationMode: AdministrationMode.flow',
           ]),
   ),
