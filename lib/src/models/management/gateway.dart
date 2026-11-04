@@ -319,3 +319,173 @@ class GatewayAppliedVersion {
         appliedBy: ConfigurationActor.tryFromJson(json['appliedBy']),
       );
 }
+
+/// How many resources a [GatewayMaster] records in each state.
+class GatewayMasterSummary {
+  final int deployed;
+  final int failed;
+  final int removed;
+
+  const GatewayMasterSummary({this.deployed = 0, this.failed = 0, this.removed = 0});
+
+  factory GatewayMasterSummary.fromJson(Map<String, dynamic> json) => GatewayMasterSummary(
+        deployed: readInt(json, 'deployed'),
+        failed: readInt(json, 'failed'),
+        removed: readInt(json, 'removed'),
+      );
+}
+
+/// What a gateway answered when it refused a resource.
+class GatewayMasterEntryFailure {
+  final String? code;
+  final String? message;
+
+  /// What in the resource was refused, when the gateway said more than [message].
+  final String? description;
+
+  const GatewayMasterEntryFailure({this.code, this.message, this.description});
+
+  factory GatewayMasterEntryFailure.fromJson(Map<String, dynamic> json) => GatewayMasterEntryFailure(
+        code: readOptionalString(json, 'code'),
+        message: readOptionalString(json, 'message'),
+        description: readOptionalString(json, 'description'),
+      );
+}
+
+/// One resource in a [GatewayMaster]: what the gateway holds under its key, and how it got there.
+class GatewayMasterEntry {
+  /// `<resourceType>/<id>`, as a diff reports it.
+  final String? key;
+  final String? resourceType;
+  final String? id;
+  final String? name;
+
+  /// The SHA-256 of the document as the master holds it; none for a removed resource or one the
+  /// gateway never accepted.
+  final String? contentHash;
+
+  /// The hash of the version the last apply of this resource sent it from.
+  final String? sourceVersion;
+  final String? origin;
+
+  /// `deployed`, `failed` (with [failure]) or `removed`.
+  final String? state;
+  final GatewayMasterEntryFailure? failure;
+
+  /// When the entry was last written.
+  final String? at;
+
+  /// The user whose apply last wrote the entry, when the server can name them.
+  final ConfigurationActor? by;
+
+  const GatewayMasterEntry({
+    this.key,
+    this.resourceType,
+    this.id,
+    this.name,
+    this.contentHash,
+    this.sourceVersion,
+    this.origin,
+    this.state,
+    this.failure,
+    this.at,
+    this.by,
+  });
+
+  factory GatewayMasterEntry.fromJson(Map<String, dynamic> json) => GatewayMasterEntry(
+        key: readOptionalString(json, 'key'),
+        resourceType: readOptionalString(json, 'resourceType'),
+        id: readOptionalString(json, 'id'),
+        name: readOptionalString(json, 'name'),
+        contentHash: readOptionalString(json, 'contentHash'),
+        sourceVersion: readOptionalString(json, 'sourceVersion'),
+        origin: readOptionalString(json, 'origin'),
+        state: readOptionalString(json, 'state'),
+        failure: json['failure'] is Map ? GatewayMasterEntryFailure.fromJson(readMap(json['failure'])) : null,
+        at: readOptionalString(json, 'at'),
+        by: ConfigurationActor.tryFromJson(json['by']),
+      );
+}
+
+/// What one gateway holds, resource by resource, as the gateway last accepted it. Each apply
+/// writes a new master and keeps the one before.
+///
+/// A gateway nothing was applied to holds the empty master: [number] 0, with no [master] hash,
+/// [entries] or [resources]. A history listing leaves [entries] and [resources] out.
+class GatewayMaster {
+  final String? gatewayId;
+
+  /// Orders the gateway's masters, from 1.
+  final int number;
+
+  /// The hash naming the master by what it holds.
+  final String? master;
+  final String? createdAt;
+
+  /// The user whose apply wrote the master, when the server can name them.
+  final ConfigurationActor? createdBy;
+
+  /// Every resource the gateway holds, one YAML document each.
+  final String? resources;
+  final GatewayMasterSummary? summary;
+
+  /// One entry per resource key, sorted by key.
+  final List<GatewayMasterEntry> entries;
+
+  const GatewayMaster({
+    this.gatewayId,
+    this.number = 0,
+    this.master,
+    this.createdAt,
+    this.createdBy,
+    this.resources,
+    this.summary,
+    this.entries = const [],
+  });
+
+  factory GatewayMaster.fromJson(Map<String, dynamic> json) => GatewayMaster(
+        gatewayId: readOptionalString(json, 'gatewayId'),
+        number: readInt(json, 'number'),
+        master: readOptionalString(json, 'master'),
+        createdAt: readOptionalString(json, 'createdAt'),
+        createdBy: ConfigurationActor.tryFromJson(json['createdBy']),
+        resources: readOptionalString(json, 'resources'),
+        summary: json['summary'] is Map ? GatewayMasterSummary.fromJson(readMap(json['summary'])) : null,
+        entries: readList(json, 'entries')
+            .map((item) => GatewayMasterEntry.fromJson(readMap(item)))
+            .toList(growable: false),
+      );
+}
+
+/// One resource's entry in one kept master.
+class GatewayResourceHistoryItem {
+  /// The hash of the master the entry is from.
+  final String? master;
+  final int? number;
+  final GatewayMasterEntry? entry;
+
+  const GatewayResourceHistoryItem({this.master, this.number, this.entry});
+
+  factory GatewayResourceHistoryItem.fromJson(Map<String, dynamic> json) => GatewayResourceHistoryItem(
+        master: readOptionalString(json, 'master'),
+        number: readOptionalInt(json, 'number'),
+        entry: json['entry'] is Map ? GatewayMasterEntry.fromJson(readMap(json['entry'])) : null,
+      );
+}
+
+/// A resource's entry in each kept master of a gateway that records it, newest first.
+class GatewayResourceHistory {
+  final String? gatewayId;
+  final String? key;
+  final List<GatewayResourceHistoryItem> history;
+
+  const GatewayResourceHistory({this.gatewayId, this.key, this.history = const []});
+
+  factory GatewayResourceHistory.fromJson(Map<String, dynamic> json) => GatewayResourceHistory(
+        gatewayId: readOptionalString(json, 'gatewayId'),
+        key: readOptionalString(json, 'key'),
+        history: readList(json, 'history')
+            .map((item) => GatewayResourceHistoryItem.fromJson(readMap(item)))
+            .toList(growable: false),
+      );
+}

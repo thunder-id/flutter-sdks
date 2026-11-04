@@ -25,6 +25,12 @@ enum ThunderIDErrorCode {
   invalidGrant,
   consentRequired,
 
+  /// The organization unit cannot be signed in to from this application: it does not exist, or
+  /// the application is not accessible from it. The server answers both with
+  /// `unauthorized_client`, so the two cannot be told apart. Raised by
+  /// `ThunderIDClient.switchOrganizationUnit`; the previous session stays as it was.
+  organizationUnitUnavailable,
+
   // Registration
   userAlreadyExists,
   invalidInput,
@@ -75,6 +81,8 @@ enum ThunderIDErrorCode {
     'INVALID_CONFIGURATION': ThunderIDErrorCode.invalidConfiguration,
     'INVALID_REDIRECT_URI': ThunderIDErrorCode.invalidRedirectUri,
     'OPERATION_NOT_SUPPORTED': ThunderIDErrorCode.operationNotSupported,
+    // The native SDKs' name for the same error.
+    'UNSUPPORTED_OPERATION': ThunderIDErrorCode.operationNotSupported,
     'AUTHENTICATION_FAILED': ThunderIDErrorCode.authenticationFailed,
     'USER_ACCOUNT_LOCKED': ThunderIDErrorCode.userAccountLocked,
     'USER_ACCOUNT_DISABLED': ThunderIDErrorCode.userAccountDisabled,
@@ -83,6 +91,7 @@ enum ThunderIDErrorCode {
     'MFA_FAILED': ThunderIDErrorCode.mfaFailed,
     'INVALID_GRANT': ThunderIDErrorCode.invalidGrant,
     'CONSENT_REQUIRED': ThunderIDErrorCode.consentRequired,
+    'ORGANIZATION_UNIT_UNAVAILABLE': ThunderIDErrorCode.organizationUnitUnavailable,
     'USER_ALREADY_EXISTS': ThunderIDErrorCode.userAlreadyExists,
     'INVALID_INPUT': ThunderIDErrorCode.invalidInput,
     'INVITATION_CODE_INVALID': ThunderIDErrorCode.invitationCodeInvalid,
@@ -148,7 +157,9 @@ class IAMApiException extends IAMException {
   /// The error the server returned, when [responseBody] is the server's error envelope: the
   /// server's own error code (such as `USR-1027`), and its message and description with their
   /// translation keys and parameters. Use it to show a message specific to the server's code.
-  /// `null` when the body is not an envelope.
+  /// An OAuth error body (`{error, error_description}`, as dynamic client registration answers)
+  /// reads as `error` for the code and `error_description` for the message. `null` when the body
+  /// is neither.
   ServerError? get serverError => ServerError.tryParse(responseBody);
 
   const IAMApiException(
@@ -205,8 +216,9 @@ class ServerError {
 
   const ServerError({required this.code, this.message, this.description});
 
-  /// Reads the envelope from a raw response body. Lenient: returns `null` when the body is not
-  /// JSON, or not an object with a string `code`.
+  /// Reads the envelope from a raw response body, or an OAuth error body (`{error,
+  /// error_description}`) as [code] and [message]. Lenient: returns `null` when the body is not
+  /// JSON, or not an object with a string `code` or `error`.
   static ServerError? tryParse(String? body) {
     if (body == null || body.trim().isEmpty) return null;
     final Object? decoded;
@@ -217,7 +229,15 @@ class ServerError {
     }
     if (decoded is! Map) return null;
     final code = decoded['code'];
-    if (code is! String) return null;
+    if (code is! String) {
+      final error = decoded['error'];
+      if (error is! String) return null;
+      final description = decoded['error_description'];
+      return ServerError(
+        code: error,
+        message: description is String ? ServerErrorMessage(defaultValue: description) : null,
+      );
+    }
     return ServerError(
       code: code,
       message: ServerErrorMessage.tryParse(decoded['message']),

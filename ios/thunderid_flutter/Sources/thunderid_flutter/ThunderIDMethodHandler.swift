@@ -16,6 +16,12 @@ final class ThunderIDMethodHandler {
         do {
             switch method {
             case "initialize":
+                // The native SDK this plugin builds against cannot push authorization requests,
+                // so an app that asks for it is refused rather than signed in without pushing.
+                if args["pushedAuthorizationRequests"] as? Bool == true {
+                    result(unsupported("pushedAuthorizationRequests"))
+                    return
+                }
                 let config = try buildConfig(from: args)
                 let ok = try await client.initialize(config: config)
                 result(ok)
@@ -30,6 +36,11 @@ final class ThunderIDMethodHandler {
             case "signIn":
                 let payloadMap = args["payload"] as? [String: Any] ?? [:]
                 let requestMap = args["request"] as? [String: Any] ?? [:]
+                // Refused rather than dropped, so a unit-bounded sign-in never runs unbounded.
+                if requestMap["ouId"] != nil {
+                    result(unsupported("A sign-in bounded to an organization unit"))
+                    return
+                }
                 let payload = buildEmbeddedPayload(from: payloadMap)
                 let request = buildFlowRequestConfig(from: requestMap)
                 let response = try await client.signIn(payload: payload, request: request)
@@ -68,6 +79,11 @@ final class ThunderIDMethodHandler {
                 result(nil)
 
             case "buildSignInUrl":
+                // Refused rather than dropped, so a unit-bounded sign-in never runs unbounded.
+                if (args["options"] as? [String: Any])?["organizationUnitId"] != nil {
+                    result(unsupported("A sign-in bounded to an organization unit"))
+                    return
+                }
                 let url = try client.buildSignInURL()
                 result(url.absoluteString)
 
@@ -156,6 +172,16 @@ final class ThunderIDMethodHandler {
         } catch {
             result(FlutterError(code: "UNKNOWN_ERROR", message: error.localizedDescription, details: nil))
         }
+    }
+
+    /// The error the Dart layer reads as `operationNotSupported`, for a call the native SDK this
+    /// plugin builds against cannot carry out.
+    private func unsupported(_ operation: String) -> FlutterError {
+        FlutterError(
+            code: "OPERATION_NOT_SUPPORTED",
+            message: "\(operation) is not supported by the native ThunderID SDK",
+            details: nil
+        )
     }
 
     // MARK: - Federated auth (TRIGGER actions)

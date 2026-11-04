@@ -109,6 +109,22 @@ class CreateGroupRequest {
       };
 }
 
+/// Payload for creating a [Group] in the organization unit a handle path names (see
+/// `getGroupsByPath`). The unit comes from the path, so there is no `ouId`.
+class CreateGroupByPathRequest {
+  final String name;
+  final String? description;
+  final List<GroupMember>? members;
+
+  const CreateGroupByPathRequest({required this.name, this.description, this.members});
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        if (description != null) 'description': description,
+        if (members != null) 'members': members!.map((member) => member.toJson()).toList(),
+      };
+}
+
 /// Payload for updating a [Group]. Membership changes go through the member operations instead.
 class UpdateGroupRequest {
   final String name;

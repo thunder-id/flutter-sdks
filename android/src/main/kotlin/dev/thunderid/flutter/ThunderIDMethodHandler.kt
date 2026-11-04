@@ -34,6 +34,11 @@ class ThunderIDMethodHandler(private val context: Context) {
         try {
             when (method) {
                 "initialize" -> {
+                    // The native SDK this plugin builds against cannot push authorization requests,
+                    // so an app that asks for it is refused rather than signed in without pushing.
+                    if (args["pushedAuthorizationRequests"] == true) {
+                        return unsupported(result, "pushedAuthorizationRequests")
+                    }
                     val config = buildConfig(args)
                     val storage = EncryptedStorageAdapter(context, prefsName = "dev.${config.vendor}.sdk.prefs")
                     result.success(client.initialize(config, storage))
@@ -49,6 +54,10 @@ class ThunderIDMethodHandler(private val context: Context) {
                     val payloadMap = args["payload"] as? Map<String, Any?> ?: emptyMap()
                     @Suppress("UNCHECKED_CAST")
                     val requestMap = args["request"] as? Map<String, Any?> ?: emptyMap()
+                    // Refused rather than dropped, so a unit-bounded sign-in never runs unbounded.
+                    if (requestMap["ouId"] != null) {
+                        return unsupported(result, "A sign-in bounded to an organization unit")
+                    }
                     val response = client.signIn(buildPayload(payloadMap), buildFlowRequest(requestMap))
                     result.success(encodeFlowResponse(response))
                 }
@@ -116,6 +125,12 @@ class ThunderIDMethodHandler(private val context: Context) {
                     result.success(null)
                 }
                 "buildSignInUrl" -> {
+                    @Suppress("UNCHECKED_CAST")
+                    val options = args["options"] as? Map<String, Any?>
+                    // Refused rather than dropped, so a unit-bounded sign-in never runs unbounded.
+                    if (options?.get("organizationUnitId") != null) {
+                        return unsupported(result, "A sign-in bounded to an organization unit")
+                    }
                     result.success(client.buildSignInUrl())
                 }
                 "handleRedirectCallback" -> {
@@ -198,6 +213,14 @@ class ThunderIDMethodHandler(private val context: Context) {
         } catch (e: Exception) {
             result.error("UNKNOWN_ERROR", e.message, null)
         }
+    }
+
+    /**
+     * Answers a call the native SDK this plugin builds against cannot carry out with the error the
+     * Dart layer reads as `operationNotSupported`.
+     */
+    private fun unsupported(result: Result, operation: String) {
+        result.error("OPERATION_NOT_SUPPORTED", "$operation is not supported by the native ThunderID SDK", null)
     }
 
     private fun buildConfig(args: Map<String, Any?>): ThunderIDConfig {

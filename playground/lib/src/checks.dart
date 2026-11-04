@@ -390,12 +390,67 @@ final List<CheckDef> checkDefs = [
       }
     },
   ),
-  const CheckDef(
+  CheckDef(
     id: 'orgs',
     section: 'Session',
-    name: 'Organizations',
-    api: 'not in thunderid_flutter',
-    unavailableReason: 'thunderid_flutter has no organizations API.',
+    name: 'Organization units',
+    api: 'client.getAccessibleOrganizationUnits() · getCurrentOrganizationUnit()',
+    run: (sdk, config) async {
+      _requireSignedIn(sdk);
+      final page = await _log.trace(
+        'getAccessibleOrganizationUnits',
+        () => sdk.client.getAccessibleOrganizationUnits(limit: 20),
+        detail: (p) => '${p.organizationUnits.length} of ${p.totalResults}, current ${p.current}',
+      );
+      final current = await _log.trace(
+        'getCurrentOrganizationUnit',
+        () => sdk.client.getCurrentOrganizationUnit(),
+        detail: (u) => u == null ? 'no ouId claim' : u.handle ?? u.id,
+      );
+      if (current != null && current.id != page.current) {
+        return CheckResult.fail('The session names ${current.id}, but /users/me/ous is relative to ${page.current}');
+      }
+      return CheckResult.pass(
+        '${page.totalResults} accessible units; signed in to ${current?.name ?? current?.handle ?? page.current}',
+      );
+    },
+  ),
+  CheckDef(
+    id: 'deviceAuthorization',
+    section: 'Session',
+    name: 'Device authorization (device side)',
+    api: 'client.startDeviceAuthorization()',
+    run: (sdk, config) async {
+      _requireInitialized(sdk);
+      if (sdk.client.isBackendMode()) throw const CheckSkipped('Not available when sign-in runs on a backend.');
+      final authorization = await _log.trace(
+        'startDeviceAuthorization',
+        () => sdk.client.startDeviceAuthorization(),
+        // The device code is a credential: only the user code is logged.
+        detail: (a) => 'userCode=${a.userCode}',
+      );
+      return CheckResult.pass('User code ${authorization.userCode} at ${authorization.verificationUri}');
+    },
+  ),
+  CheckDef(
+    id: 'deviceVerification',
+    section: 'Session',
+    name: 'Device authorization (user side)',
+    api: 'client.verifyDeviceCode()',
+    run: (sdk, config) async {
+      _requireInitialized(sdk);
+      if (sdk.client.isBackendMode()) throw const CheckSkipped('Not available when sign-in runs on a backend.');
+      final appId = _requireAppId(config);
+      final step = await _log.trace(
+        'verifyDeviceCode',
+        () => sdk.client.verifyDeviceCode(applicationId: appId),
+        detail: (r) => 'flowStatus=${r.flowStatus.name}',
+      );
+      if (step.flowStatus == FlowStatus.error) {
+        return CheckResult.fail(step.failureReason ?? 'The DEVICE_GRANT flow returned an error');
+      }
+      return CheckResult.pass('DEVICE_GRANT flow started: ${(step.data?['inputs'] as List?)?.length ?? 0} inputs');
+    },
   ),
 
   // ── Management ──────────────────────────────────────────────────────────
@@ -810,7 +865,8 @@ final List<CheckDef> checkDefs = [
     id: 'configurationAndGateways',
     section: 'Management',
     name: 'Server configuration, variables and gateways',
-    api: 'management.getServerConfigs() · getVariables() · getSecrets() · getGateways() · getConfigurationVersions()',
+    api: 'management.getServerConfigs() · getVariables() · getSecrets() · getGateways() · getGatewayMaster(id) · '
+        'getConfigurationVersions()',
     run: (sdk, config) async {
       // Read only. Secrets come back without their values.
       final management = _management(sdk);
@@ -820,6 +876,13 @@ final List<CheckDef> checkDefs = [
       final secrets = await _log.trace('getSecrets', () => management.getSecrets(limit: 5), detail: _pageDetail);
       final gateways =
           await _log.trace('getGateways', management.getGateways, detail: (g) => '${g.length} gateways');
+      final master = gateways.isEmpty
+          ? null
+          : await _log.trace(
+              'getGatewayMaster',
+              () => management.getGatewayMaster(gateways.first.id),
+              detail: (m) => 'master #${m.number}, ${m.entries.length} resources',
+            );
       final versions = await _log.trace(
         'getConfigurationVersions',
         management.getConfigurationVersions,
@@ -827,7 +890,31 @@ final List<CheckDef> checkDefs = [
       );
       return CheckResult.pass(
         '${sections.length} config sections, ${variables.totalResults} variables, ${secrets.totalResults} secrets, '
-        '${gateways.length} gateways, ${versions.length} configuration versions',
+        '${gateways.length} gateways${master == null ? '' : ' (first holds ${master.entries.length} resources)'}, '
+        '${versions.length} configuration versions',
+      );
+    },
+  ),
+  CheckDef(
+    id: 'verifiableCredentials',
+    section: 'Management',
+    name: 'Verifiable credentials',
+    api: 'management.getCredentialConfigurations() · getPresentationDefinitions()',
+    run: (sdk, config) async {
+      // Read only. Client registration has no listing, so it is covered by the endpoints check.
+      final management = _management(sdk);
+      final configurations = await _log.trace(
+        'getCredentialConfigurations',
+        management.getCredentialConfigurations,
+        detail: (c) => '${c.length} credential configurations',
+      );
+      final definitions = await _log.trace(
+        'getPresentationDefinitions',
+        management.getPresentationDefinitions,
+        detail: (d) => '${d.length} presentation definitions',
+      );
+      return CheckResult.pass(
+        '${configurations.length} credential configurations, ${definitions.length} presentation definitions',
       );
     },
   ),
@@ -854,6 +941,80 @@ final List<CheckDef> checkDefs = [
       final page = await _log.trace('getAgentRoles', () => management.getAgentRoles(agent.id), detail: _pageDetail);
       final names = page.items.take(3).join(', ');
       return CheckResult.pass('"${agent.name}" has ${page.totalResults} roles${names.isEmpty ? '' : ': $names'}');
+    },
+  ),
+
+  CheckDef(
+    id: 'sharingAndPaths',
+    section: 'Management',
+    name: 'Role and flow sharing, flow variables, groups by path',
+    api: 'management.getRoleSharingPolicies(id) · getFlowSharingPolicies(id) · getFlowVariables(id, ouId) · '
+        'getGroupsByPath(path)',
+    run: (sdk, config) async {
+      // Read only.
+      final management = _management(sdk);
+      final units = await _log.trace('getOrganizationUnits', () => management.getOrganizationUnits(limit: 1), detail: _pageDetail);
+      if (units.items.isEmpty) return const CheckResult.pass('No organization units');
+      final unit = units.items.first;
+      final groups =
+          await _log.trace('getGroupsByPath', () => management.getGroupsByPath(unit.handle, limit: 5), detail: _pageDetail);
+      final parts = ['"${unit.handle}" holds ${groups.totalResults} groups'];
+      final roles = await _log.trace('getRoles', () => management.getRoles(limit: 1), detail: _pageDetail);
+      if (roles.items.isNotEmpty) {
+        final policies = await _log.trace(
+          'getRoleSharingPolicies',
+          () => management.getRoleSharingPolicies(roles.items.first.id),
+          detail: _pageDetail,
+        );
+        parts.add('role "${roles.items.first.name}" has ${policies.totalResults} sharing policies');
+      }
+      final flows = await _log.trace('getFlows', () => management.getFlows(limit: 1), detail: _pageDetail);
+      if (flows.items.isNotEmpty) {
+        final flow = flows.items.first;
+        final policies = await _log.trace(
+          'getFlowSharingPolicies',
+          () => management.getFlowSharingPolicies(flow.id),
+          detail: _pageDetail,
+        );
+        final variables = await _log.trace(
+          'getFlowVariables',
+          () => management.getFlowVariables(flow.id, ouId: unit.id),
+          detail: (v) => '${v.values.length} overrides',
+        );
+        parts.add(
+          'flow "${flow.name}" has ${policies.totalResults} sharing policies and '
+          '${variables.values.length} variable overrides in "${unit.handle}"',
+        );
+      }
+      return CheckResult.pass(parts.join('; '));
+    },
+  ),
+  CheckDef(
+    id: 'projectsAndAuthorizationDetails',
+    section: 'Management',
+    name: 'Projects and authorization details types',
+    api: 'management.getProjects() · getAuthorizationDetailTypes() · getSupportedAuthorizationDetailsTypes()',
+    run: (sdk, config) async {
+      final management = _management(sdk);
+      final projects = await _log.trace('getProjects', () => management.getProjects(limit: 5), detail: _pageDetail);
+      final types = await _log.trace(
+        'getAuthorizationDetailTypes',
+        () => management.getAuthorizationDetailTypes(limit: 5),
+        detail: _pageDetail,
+      );
+      // The public request view, read without a token.
+      final supported = await _log.trace(
+        'getSupportedAuthorizationDetailsTypes',
+        () => getSupportedAuthorizationDetailsTypes(
+          baseUrl: management.baseUrl,
+          allowInsecureConnections: sdk.widget.config.allowInsecureConnections,
+        ),
+        detail: (t) => '${t.length} types',
+      );
+      return CheckResult.pass(
+        '${projects.totalResults} projects, ${types.totalResults} registered authorization details types, '
+        '${supported.length} offered to clients',
+      );
     },
   ),
 
@@ -889,12 +1050,15 @@ final List<CheckDef> checkDefs = [
         sdk.setLocale('es-ES');
         final es = sdk.i18n.resolve('signIn.button');
         final fallback = sdk.i18n.resolve('signIn.password');
-        _log.add('i18n:resolve', 'fr-FR="$fr" es-ES="$es"', kind: LogKind.ok);
+        sdk.setLocale('ja-JP');
+        final ja = sdk.i18n.resolve('signIn.password');
+        _log.add('i18n:resolve', 'fr-FR="$fr" es-ES="$es" ja-JP="$ja"', kind: LogKind.ok);
         if (fr != playgroundBundles['fr-FR']!['signIn.button'] || es != playgroundBundles['es-ES']!['signIn.button']) {
           return CheckResult.fail('Bundles not applied: fr-FR="$fr", es-ES="$es"');
         }
         if (fallback != 'Password') return CheckResult.fail('Fallback to built-in strings failed: "$fallback"');
-        return CheckResult.pass('fr-FR "$fr", es-ES "$es", fallback to built-in English');
+        if (ja == 'Password') return const CheckResult.fail('The built-in ja-JP bundle was not applied');
+        return CheckResult.pass('fr-FR "$fr", es-ES "$es", built-in ja-JP "$ja", fallback to built-in English');
       } finally {
         sdk.setLocale(previous);
       }

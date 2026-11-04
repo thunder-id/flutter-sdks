@@ -52,6 +52,11 @@ const Map<String, String> endpointEnvKeys = {
   ManagementEndpointKeys.configurationVersions: 'THUNDERID_ENDPOINT_CONFIGURATION_VERSIONS',
   ManagementEndpointKeys.import: 'THUNDERID_ENDPOINT_IMPORT',
   ManagementEndpointKeys.export: 'THUNDERID_ENDPOINT_EXPORT',
+  ManagementEndpointKeys.credentialConfigurations: 'THUNDERID_ENDPOINT_CREDENTIAL_CONFIGURATIONS',
+  ManagementEndpointKeys.presentationDefinitions: 'THUNDERID_ENDPOINT_PRESENTATION_DEFINITIONS',
+  ManagementEndpointKeys.clientRegistrations: 'THUNDERID_ENDPOINT_CLIENT_REGISTRATIONS',
+  ManagementEndpointKeys.projects: 'THUNDERID_ENDPOINT_PROJECTS',
+  ManagementEndpointKeys.authorizationDetailTypes: 'THUNDERID_ENDPOINT_AUTHORIZATION_DETAIL_TYPES',
 };
 
 const _defaultScopes = ['openid', 'profile', 'email'];

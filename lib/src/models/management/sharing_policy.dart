@@ -3,7 +3,20 @@
 
 import 'json_reader.dart';
 
-/// A policy that shares a user or an application from the organization unit that owns it into
+/// The kinds of resource that have sharing policies.
+enum SharingResourceType {
+  user('user'),
+  application('application'),
+  role('role'),
+  flow('flow');
+
+  /// The wire value, e.g. `application`.
+  final String value;
+
+  const SharingResourceType(this.value);
+}
+
+/// A policy that shares a user, an application, a role, or a flow from the organization unit that owns it into
 /// other units.
 ///
 /// The unit selections are kept as the server describes them: [childUnits] and [otherTreeRoots]
@@ -103,8 +116,11 @@ class OverlayRule {
       );
 }
 
-/// How a shared user or application appears in one organization unit: whether it is visible
-/// there, the policies that put it there, and the rule for each attribute.
+/// How a shared user, application, role, or flow appears in one organization unit: whether it is
+/// visible there, the policies that put it there, and the rule for each attribute (for a role,
+/// `assignments`; for a flow, `variables.<identifier>`).
+///
+/// [isOwned] reads the server's `isOwnedByOU` (users, applications, roles) or `owned` (flows).
 class ResolvedOverlay {
   final String? ouId;
   final bool? isOwned;
@@ -116,7 +132,9 @@ class ResolvedOverlay {
 
   factory ResolvedOverlay.fromJson(Map<String, dynamic> json) => ResolvedOverlay(
         ouId: readOptionalString(json, 'ouId'),
-        isOwned: readOptionalBool(json, 'isOwned'),
+        isOwned: readOptionalBool(json, 'isOwned') ??
+            readOptionalBool(json, 'isOwnedByOU') ??
+            readOptionalBool(json, 'owned'),
         visible: readOptionalBool(json, 'visible'),
         policyIds: readStringList(json, 'policyIds'),
         rules: {

@@ -140,3 +140,20 @@ class FlowVersion {
         createdAt: readOptionalString(json, 'createdAt'),
       );
 }
+
+/// The values one organization unit has set for a flow's variables (`/flows/{flowId}/variables`),
+/// keyed by variable identifier, each a [String], a [num], or a [bool]. A variable the unit has not
+/// set is absent: the flow's own default applies to it.
+class FlowVariables {
+  final Map<String, Object> values;
+
+  const FlowVariables({this.values = const {}});
+
+  factory FlowVariables.fromJson(Map<String, dynamic> json) => FlowVariables(
+        values: {
+          for (final entry in readMap(json['values']).entries)
+            if (entry.value case final Object value when value is String || value is num || value is bool)
+              entry.key: value,
+        },
+      );
+}

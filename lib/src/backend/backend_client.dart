@@ -184,7 +184,10 @@ class BackendClient {
   /// Builds the URL that starts sign-in at the backend, binding it to a new PKCE pair. Open it in
   /// a system browser session; the backend returns to the redirect URI with a one-time
   /// `session_code`, which [handleRedirectCallback] exchanges.
-  Future<String> buildSignInUrl() async {
+  ///
+  /// [organizationUnitId] bounds the sign-in to that unit, passed to the backend as the `ouId`
+  /// query parameter.
+  Future<String> buildSignInUrl({String? organizationUnitId}) async {
     final pkce = await _channel.invokeMap('generatePkce');
     final verifier = pkce['verifier'];
     final challenge = pkce['challenge'];
@@ -198,6 +201,7 @@ class BackendClient {
         'redirect_uri': endpoints.redirectUri,
         'code_challenge': challenge,
         'code_challenge_method': 'S256',
+        if (organizationUnitId != null) 'ouId': organizationUnitId,
       },
     ).toString();
   }

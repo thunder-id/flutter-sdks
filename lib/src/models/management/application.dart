@@ -490,7 +490,14 @@ class ApplicationRequest {
   /// Write-only on the server: sent to set a flow secret.
   final String? flowSecret;
   final List<InboundAuthConfig>? inboundAuthConfig;
+
+  /// The organization unit the application belongs to. On a create, required unless [projectId]
+  /// is given.
   final String? ouId;
+
+  /// Write-only, on a create: the project whose root organization unit the application is placed
+  /// in, when [ouId] is not given. Never read back from the server.
+  final String? projectId;
   final TokenConfig? assertion;
   final AttestationConfig? attestation;
   final List<String>? passkeyAllowedOrigins;
@@ -523,6 +530,7 @@ class ApplicationRequest {
     this.flowSecret,
     this.inboundAuthConfig,
     this.ouId,
+    this.projectId,
     this.assertion,
     this.attestation,
     this.passkeyAllowedOrigins,
@@ -620,6 +628,7 @@ class ApplicationRequest {
         if (flowSecret != null) 'flowSecret': flowSecret,
         if (inboundAuthConfig != null) 'inboundAuthConfig': inboundAuthConfig!.map((entry) => entry.toJson()).toList(),
         if (ouId != null) 'ouId': ouId,
+        if (projectId != null) 'projectId': projectId,
         if (assertion != null) 'assertion': assertion!.toJson(),
         if (attestation != null) 'attestation': attestation!.toJson(),
         if (passkeyAllowedOrigins != null) 'passkeyAllowedOrigins': passkeyAllowedOrigins,

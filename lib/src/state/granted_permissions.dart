@@ -5,8 +5,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
-import '../management/management_transport.dart';
-import '../management/permissions.dart';
+import '../api/management/management_transport.dart';
+import '../api/management/permissions.dart';
 
 /// The permissions the signed-in user's access token carries, and a check against them: the
 /// counterpart of the React SDK's `useGrantedPermissions`.

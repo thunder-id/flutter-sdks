@@ -108,7 +108,12 @@ class AgentType {
 /// Payload for registering an [Agent].
 class CreateAgentRequest {
   final String name;
-  final String ouId;
+
+  /// The organization unit the agent belongs to. Required unless [projectId] is given.
+  final String? ouId;
+
+  /// The project whose root organization unit the agent is placed in, when [ouId] is not given.
+  final String? projectId;
   final String type;
   final String? description;
   final String? owner;
@@ -118,7 +123,8 @@ class CreateAgentRequest {
 
   const CreateAgentRequest({
     required this.name,
-    required this.ouId,
+    this.ouId,
+    this.projectId,
     required this.type,
     this.description,
     this.owner,
@@ -129,7 +135,8 @@ class CreateAgentRequest {
 
   Map<String, dynamic> toJson() => {
         'name': name,
-        'ouId': ouId,
+        if (ouId != null) 'ouId': ouId,
+        if (projectId != null) 'projectId': projectId,
         'type': type,
         if (description != null) 'description': description,
         if (owner != null) 'owner': owner,

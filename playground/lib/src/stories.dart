@@ -232,6 +232,45 @@ final List<ComponentDef> componentDefs = [
     code: (s) => 'SignUp(\n  applicationId: ${lit(s.text('applicationId'))},\n  onSuccess: () {},\n  onError: () {},\n)',
   ),
   ComponentDef(
+    id: 'deviceGrant',
+    name: 'DeviceGrant',
+    category: 'Flows',
+    defaults: const {'userCode': '', 'applicationId': '', 'result': 'none'},
+    controls: const [ControlDef.text('userCode'), ControlDef.text('applicationId')],
+    stories: const [
+      StoryDef('connected', 'Connected'),
+      StoryDef(
+        'base',
+        'Base (sample step)',
+        controls: [
+          ControlDef.text('userCode'),
+          ControlDef.choice('result', ['none', 'approved', 'denied', 'expired', 'failed']),
+        ],
+      ),
+    ],
+    build: (context, s) => s.story == 'base'
+        ? BaseDeviceGrant(
+            step: _sampleDeviceStep,
+            initialValues: {'user_code': s.text('userCode')},
+            result: DeviceGrantResult.values.where((r) => r.name == s.text('result')).firstOrNull,
+            onSubmit: (action, inputs) => s.emit('onSubmit(${action ?? '-'}, ${inputs['user_code'] ?? ''})'),
+          )
+        : DeviceGrant(
+            key: ValueKey('deviceGrant-${s.text('userCode')}-${s.text('applicationId')}'),
+            userCode: s.text('userCode').isEmpty ? null : s.text('userCode'),
+            applicationId: s.text('applicationId').isEmpty ? null : s.text('applicationId'),
+            onComplete: (result) => s.emit('onComplete(${result.name})'),
+            onError: (message) => s.emit('onError'),
+          ),
+    code: (s) => s.story == 'base'
+        ? 'BaseDeviceGrant(\n  step: step,\n  initialValues: {\'user_code\': ${lit(s.text('userCode'))}},\n'
+            '  onSubmit: (actionId, inputs) {},\n)'
+        : 'DeviceGrant(\n'
+            '${s.text('userCode').isEmpty ? '' : '  userCode: ${lit(s.text('userCode'))},\n'}'
+            '${s.text('applicationId').isEmpty ? '' : '  applicationId: ${lit(s.text('applicationId'))},\n'}'
+            '  onComplete: (result) {},\n  onError: (message) {},\n)',
+  ),
+  ComponentDef(
     id: 'userAvatar',
     name: 'UserAvatar',
     category: 'Presentation',
@@ -303,6 +342,38 @@ final List<ComponentDef> componentDefs = [
         '${s.flag('showDivider') ? '' : '  showDivider: false,\n'}  onSuccess: () {},\n)',
   ),
   ComponentDef(
+    id: 'organizationUnitSwitcher',
+    name: 'OrganizationUnitSwitcher',
+    category: 'Presentation',
+    defaults: const {'scope': 'all', 'limit': '10'},
+    controls: const [
+      ControlDef.choice('scope', ['all', 'siblings']),
+      ControlDef.choice('limit', ['2', '10', '20']),
+    ],
+    stories: const [
+      StoryDef('connected', 'Connected'),
+      StoryDef('base', 'Base (sample data)', controls: []),
+    ],
+    build: (context, s) => s.story == 'base'
+        ? BaseOrganizationUnitSwitcher(
+            units: _sampleUnits,
+            currentId: _sampleUnits.first.id,
+            onSwitch: (unit) => s.emit('onSwitch ${unit.handle}'),
+          )
+        : OrganizationUnitSwitcher(
+            key: ValueKey('ouSwitcher-${s.text('scope')}-${s.text('limit')}'),
+            scope: s.text('scope') == 'siblings' ? AccessibleOrganizationUnitScope.siblings : null,
+            limit: int.tryParse(s.text('limit')) ?? 10,
+            onSwitched: (user) => s.emit('onSwitched ${user['ouId'] ?? '-'}'),
+            onError: (error) => s.emit('onError'),
+          ),
+    code: (s) => s.story == 'base'
+        ? 'BaseOrganizationUnitSwitcher(\n  units: units,\n  currentId: currentId,\n  onSwitch: (unit) {},\n)'
+        : 'OrganizationUnitSwitcher(\n'
+            '${s.text('scope') == 'siblings' ? '  scope: AccessibleOrganizationUnitScope.siblings,\n' : ''}'
+            '  limit: ${s.text('limit')},\n  onSwitched: (user) {},\n)',
+  ),
+  ComponentDef(
     id: 'languageSwitcher',
     name: 'LanguageSwitcher',
     category: 'Presentation',
@@ -361,5 +432,21 @@ final List<ComponentDef> componentDefs = [
   ...customRenderComponentDefs,
 ];
 
+const _sampleUnits = [
+  AccessibleOrganizationUnit(id: 'ou-east', handle: 'acme-east', name: 'Acme East'),
+  AccessibleOrganizationUnit(id: 'ou-west', handle: 'acme-west', name: 'Acme West'),
+];
+
 List<String> _locales(StoryContext s) =>
     s.text('locales').split(',').map((l) => l.trim()).where((l) => l.isNotEmpty).toList();
+
+/// A device code step, as the server describes it, for the Base DeviceGrant story.
+final _sampleDeviceStep = EmbeddedFlowResponse.fromMap(const {
+  'flowId': 'sample-execution',
+  'flowStatus': 'INCOMPLETE',
+  'data': {
+    'inputs': [
+      {'identifier': 'user_code', 'type': 'TEXT_INPUT', 'required': true},
+    ],
+  },
+});

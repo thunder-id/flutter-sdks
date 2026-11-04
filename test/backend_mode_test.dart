@@ -7,8 +7,10 @@ import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:thunderid_flutter/src/models/backend.dart';
+import 'package:thunderid_flutter/src/models/ciba.dart';
 import 'package:thunderid_flutter/src/models/flow_models.dart';
 import 'package:thunderid_flutter/src/models/http_request.dart';
+import 'package:thunderid_flutter/src/models/sign_in_options.dart';
 import 'package:thunderid_flutter/src/models/thunderid_config.dart';
 import 'package:thunderid_flutter/src/models/thunderid_error.dart';
 import 'package:thunderid_flutter/src/models/token_exchange_config.dart';
@@ -203,6 +205,52 @@ void main() {
       expect(uri.queryParameters['redirect_uri'], 'com.example.app://callback');
       expect(uri.queryParameters['code_challenge'], 'challenge-1');
       expect(uri.queryParameters['code_challenge_method'], 'S256');
+      expect(uri.queryParameters.containsKey('ouId'), isFalse);
+    });
+
+    test('passes a sign-in bounded to an organization unit as the ouId query parameter', () async {
+      await client.initialize(_config);
+      final uri = Uri.parse(
+        await client.buildSignInUrl(options: const SignInOptions(organizationUnitId: 'ou 2/x')),
+      );
+      expect(uri.queryParameters['ouId'], 'ou 2/x');
+    });
+
+    test('switchOrganizationUnit signs in again through the backend, bounded to the unit', () async {
+      await client.initialize(_config);
+      final user = await client.switchOrganizationUnit('ou-2');
+      final open = log.firstWhere((c) => c.method == 'openAuthSession');
+      final url = Uri.parse((open.arguments as Map<Object?, Object?>)['url']! as String);
+      expect(url.queryParameters['ouId'], 'ou-2');
+      expect(user.sub, 'user-1');
+      expect(secureStore.values, contains('handle-1'));
+    });
+
+    test('a refused switch keeps the backend session handle', () async {
+      await client.initialize(_config);
+      await client.signInWithRedirect();
+      callbackUrl = 'com.example.app://callback?error=unauthorized_client';
+      await expectLater(
+        client.switchOrganizationUnit('ou-9'),
+        throwsA(isA<IAMException>().having((e) => e.code, 'code', ThunderIDErrorCode.organizationUnitUnavailable)),
+      );
+      expect(secureStore.values, contains('handle-1'));
+      expect(server.to('$_backend/api/auth/session').where((r) => r.method == 'POST'), hasLength(1));
+    });
+
+    test('the account and device operations that need the token are refused', () async {
+      await client.initialize(_config);
+      for (final call in <Future<Object?> Function()>[
+        () => client.getAccessibleOrganizationUnits(),
+        () => client.initiateCIBA(const CIBAInitiateOptions(loginHint: 'ada')),
+        () => client.startDeviceAuthorization(),
+        () => client.verifyDeviceCode(userCode: 'ABCD'),
+      ]) {
+        await expectLater(
+          call(),
+          throwsA(isA<IAMException>().having((e) => e.code, 'code', ThunderIDErrorCode.operationNotSupported)),
+        );
+      }
     });
 
     test('posts the session code with the verifier, stores the handle, and sends it after', () async {

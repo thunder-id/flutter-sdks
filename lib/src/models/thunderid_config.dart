@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import '../management/management_transport.dart';
+import '../api/management/management_transport.dart';
 import 'backend.dart';
 import 'preferences.dart';
 
@@ -30,6 +30,15 @@ class ThunderIDConfig {
   final Map<String, dynamic> signInOptions;
   final Map<String, dynamic> signOutOptions;
   final Map<String, dynamic> signUpOptions;
+
+  /// Pushes the authorization request to the server's `/oauth2/par` endpoint (RFC 9126) before a
+  /// redirect-mode sign-in, and redirects with the `request_uri` it returns. Redirect mode only.
+  ///
+  /// Leaving it off never stops pushing when the server's metadata sets
+  /// `require_pushed_authorization_requests`. Redirect-mode sign-in runs in the native SDK, so
+  /// the native iOS and Android SDKs carry it out; a native SDK that cannot fails [ThunderIDClient.initialize]
+  /// with [ThunderIDErrorCode.operationNotSupported] rather than sign in without pushing.
+  final bool pushedAuthorizationRequests;
 
   // Application Identity
   final String? applicationId;
@@ -100,6 +109,7 @@ class ThunderIDConfig {
     this.signInOptions = const {},
     this.signOutOptions = const {},
     this.signUpOptions = const {},
+    this.pushedAuthorizationRequests = false,
     this.applicationId,
     this.organizationHandle,
     this.fetchUserProfile = true,
@@ -125,6 +135,7 @@ class ThunderIDConfig {
         'signInOptions': signInOptions,
         'signOutOptions': signOutOptions,
         'signUpOptions': signUpOptions,
+        if (pushedAuthorizationRequests) 'pushedAuthorizationRequests': true,
         if (applicationId != null) 'applicationId': applicationId,
         if (organizationHandle != null) 'organizationHandle': organizationHandle,
         'fetchUserProfile': fetchUserProfile,
@@ -164,6 +175,11 @@ class EndpointsConfig {
   final String? configurationVersions;
   final String? import;
   final String? export;
+  final String? credentialConfigurations;
+  final String? presentationDefinitions;
+  final String? clientRegistrations;
+  final String? projects;
+  final String? authorizationDetailTypes;
 
   /// The app backend's auth endpoints. Setting them hands sign-in to the backend: the SDK then
   /// signs in, reads the session, and sends API calls through the backend, and the embedded
@@ -192,6 +208,11 @@ class EndpointsConfig {
     this.configurationVersions,
     this.import,
     this.export,
+    this.credentialConfigurations,
+    this.presentationDefinitions,
+    this.clientRegistrations,
+    this.projects,
+    this.authorizationDetailTypes,
     this.backend,
   });
 
@@ -218,6 +239,11 @@ class EndpointsConfig {
         if (configurationVersions case final url?) 'configurationVersions': url,
         if (import case final url?) 'import': url,
         if (export case final url?) 'export': url,
+        if (credentialConfigurations case final url?) 'credentialConfigurations': url,
+        if (presentationDefinitions case final url?) 'presentationDefinitions': url,
+        if (clientRegistrations case final url?) 'clientRegistrations': url,
+        if (projects case final url?) 'projects': url,
+        if (authorizationDetailTypes case final url?) 'authorizationDetailTypes': url,
       };
 }
 

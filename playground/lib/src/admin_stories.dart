@@ -11,7 +11,7 @@ import 'stories.dart';
 // fed the sample records below, so it renders without a server).
 
 /// Ids picked in a Connected list story, used by the detail stories when their id control is
-/// empty: select a row in GroupList, then open GroupMembers.
+/// empty: select a row in GroupList, then open GroupMembers or GroupDetails.
 final Map<String, String> _picked = {};
 
 const _ou = 'ou-default';
@@ -51,6 +51,12 @@ const _sampleRoles = [
   ),
   Role(id: 'r-viewer', name: 'Viewer', ouId: _ou, description: 'Read-only access', isReadOnly: true),
 ];
+
+/// The permissions each sample resource server's actions grant, to pick from when editing.
+const _samplePermissionOptions = {
+  'rs-system': ['system'],
+  'rs-orders': ['orders:read', 'orders:write', 'orders:delete'],
+};
 
 const _sampleAgents = [
   Agent(
@@ -123,6 +129,48 @@ final _sampleApplication = Application.fromJson({
     },
   ],
 });
+
+const _sampleProjects = [
+  Project(id: 'p-storefront', handle: 'storefront', displayName: 'Storefront', description: 'Customer apps'),
+  Project(id: 'p-backoffice', handle: 'backoffice', displayName: 'Back office', createdAt: '2026-01-02T03:04:05Z'),
+];
+
+const _sampleUnits = [
+  BasicOrganizationUnit(id: 'ou-eng', handle: 'engineering', name: 'Engineering', description: 'Builds the product'),
+  BasicOrganizationUnit(id: 'ou-sales', handle: 'sales', name: 'Sales'),
+];
+
+const _sampleUnit = OrganizationUnit(
+  id: 'ou-eng',
+  handle: 'engineering',
+  name: 'Engineering',
+  description: 'Builds the product',
+  parent: 'ou-root',
+);
+
+final _samplePolicies = [
+  SharingPolicy.fromJson(const {
+    'id': 'pol-children',
+    'initiatingOuId': 'ou-root',
+    'version': 1,
+    'childUnits': {
+      'mode': 'all',
+      'excludedOuIds': ['ou-sales'],
+    },
+  }),
+  SharingPolicy.fromJson(const {
+    'id': 'pol-chosen',
+    'version': 3,
+    'childUnits': {
+      'mode': 'selected',
+      'units': [
+        {'ouId': 'ou-eng', 'reach': 'subtree'},
+      ],
+    },
+  }),
+];
+
+const _sharingTypes = ['user', 'application', 'role', 'flow'];
 
 // ── Controls ──────────────────────────────────────────────────────────────
 
@@ -530,6 +578,69 @@ final List<ComponentDef> adminComponentDefs = [
             if (_mode(s) == AdministrationMode.flow) 'administrationMode: AdministrationMode.flow',
           ]),
   ),
+  ComponentDef(
+    id: 'groupDetails',
+    name: 'GroupDetails',
+    category: 'Admin',
+    defaults: const {
+      'groupId': '',
+      'editable': false,
+      'deletable': false,
+      'administrationMode': 'native',
+      'state': 'data',
+    },
+    controls: const [
+      ControlDef.text('groupId'),
+      ControlDef.toggle('editable'),
+      ControlDef.toggle('deletable'),
+      ControlDef.choice('administrationMode', _administrationModes),
+    ],
+    stories: const [
+      StoryDef('connected', 'Connected'),
+      StoryDef(
+        'base',
+        'Base (sample data)',
+        controls: [ControlDef.choice('state', _detailStates), ControlDef.toggle('deletable')],
+      ),
+    ],
+    build: (context, s) {
+      if (s.story == 'base') {
+        return BaseGroupDetails(
+          group: s.text('state') == 'data' ? _sampleGroups.first : null,
+          isLoading: s.text('state') == 'loading',
+          error: _error(context, s, 'admin.groups.details.error'),
+          onDelete: s.flag('deletable') ? () => s.emit('onDelete') : null,
+          sections: [BaseGroupMembers(members: _sampleMembers, preferences: _prefs(s))],
+          preferences: _prefs(s),
+        );
+      }
+      final groupId = _id(s, 'groupId', 'group');
+      if (groupId.isEmpty) return _needsId('groupId', 'GroupList');
+      return GroupDetails(
+        key: ValueKey('groupDetails/$groupId'),
+        groupId: groupId,
+        editable: s.flag('editable'),
+        deletable: s.flag('deletable'),
+        administrationMode: _mode(s),
+        onDeleted: () => s.emit('onDeleted'),
+        preferences: _prefs(s),
+      );
+    },
+    code: (s) => s.story == 'base'
+        ? _snippet('BaseGroupDetails', [
+            'group: group',
+            'sections: [GroupMembers(groupId: group.id, ouId: group.ouId)]',
+            _stateArgs(s, 'admin.groups.details.error'),
+            if (s.flag('deletable')) 'onDelete: () {}',
+          ])
+        : _snippet('GroupDetails', [
+            'groupId: ${lit(_id(s, 'groupId', 'group').isEmpty ? 'group-id' : _id(s, 'groupId', 'group'))}',
+            if (s.flag('editable')) 'editable: true',
+            if (s.flag('deletable')) 'deletable: true',
+            if (_mode(s) == AdministrationMode.flow) 'administrationMode: AdministrationMode.flow',
+            'onDeleted: () {}',
+          ]),
+  ),
   _list<Role>(
     id: 'roleList',
     name: 'RoleList',
@@ -574,21 +685,25 @@ final List<ComponentDef> adminComponentDefs = [
     id: 'rolePermissions',
     name: 'RolePermissions',
     category: 'Admin',
-    defaults: const {'roleId': '', 'state': 'data', 'resourceNames': true},
-    controls: const [ControlDef.text('roleId')],
+    defaults: const {'roleId': '', 'editable': true, 'state': 'data', 'resourceNames': true},
+    controls: const [ControlDef.text('roleId'), ControlDef.toggle('editable')],
     stories: const [
       StoryDef('connected', 'Connected'),
       StoryDef(
         'base',
         'Base (sample data)',
-        controls: [ControlDef.choice('state', _states), ControlDef.toggle('resourceNames')],
+        controls: [ControlDef.choice('state', _states), ControlDef.toggle('resourceNames'), ControlDef.toggle('editable')],
       ),
     ],
     build: (context, s) {
+      final editable = s.flag('editable');
       if (s.story == 'base') {
         return BaseRolePermissions(
           permissions: s.text('state') == 'empty' ? const [] : _sampleRoles.first.permissions,
           resourceServerNames: s.flag('resourceNames') ? const {'rs-system': 'System API', 'rs-orders': 'Orders API'} : const {},
+          availablePermissions: editable ? _samplePermissionOptions : null,
+          onAdd: editable ? _emitWith(s, 'onAdd', (p) => '${p.resourceServerId}:${p.permission}') : null,
+          onRemove: editable ? _emitWith(s, 'onRemove', (p) => '${p.resourceServerId}:${p.permission}') : null,
           isLoading: s.text('state') == 'loading',
           error: _error(context, s, 'admin.roles.permissions.error'),
           preferences: _prefs(s),
@@ -596,16 +711,27 @@ final List<ComponentDef> adminComponentDefs = [
       }
       final roleId = _id(s, 'roleId', 'role');
       if (roleId.isEmpty) return _needsId('roleId', 'RoleList');
-      return RolePermissions(key: ValueKey('rolePermissions/$roleId'), roleId: roleId, preferences: _prefs(s));
+      return RolePermissions(
+        key: ValueKey('rolePermissions/$roleId/$editable'),
+        roleId: roleId,
+        editable: editable,
+        preferences: _prefs(s),
+      );
     },
     code: (s) => s.story == 'base'
         ? _snippet('BaseRolePermissions', [
             'permissions: ${s.text('state') == 'empty' ? 'const []' : 'role.permissions'}',
             if (s.flag('resourceNames')) "resourceServerNames: const {'rs-system': 'System API'}",
+            if (s.flag('editable')) ...[
+              "availablePermissions: const {'rs-orders': ['orders:read', 'orders:write', 'orders:delete']}",
+              'onAdd: (permission) {}',
+              'onRemove: (permission) {}',
+            ],
             _stateArgs(s, 'admin.roles.permissions.error'),
           ])
         : _snippet('RolePermissions', [
             'roleId: ${lit(_id(s, 'roleId', 'role').isEmpty ? 'role-id' : _id(s, 'roleId', 'role'))}',
+            if (s.flag('editable')) 'editable: true',
           ]),
   ),
   ComponentDef(
@@ -660,6 +786,72 @@ final List<ComponentDef> adminComponentDefs = [
             if (s.flag('editable')) 'editable: true',
             if (_opt(s, 'ouId') != null) 'ouId: ${lit(_opt(s, 'ouId')!)}',
             if (_mode(s) == AdministrationMode.flow) 'administrationMode: AdministrationMode.flow',
+          ]),
+  ),
+  ComponentDef(
+    id: 'roleDetails',
+    name: 'RoleDetails',
+    category: 'Admin',
+    defaults: const {
+      'roleId': '',
+      'editable': false,
+      'deletable': false,
+      'administrationMode': 'native',
+      'state': 'data',
+    },
+    controls: const [
+      ControlDef.text('roleId'),
+      ControlDef.toggle('editable'),
+      ControlDef.toggle('deletable'),
+      ControlDef.choice('administrationMode', _administrationModes),
+    ],
+    stories: const [
+      StoryDef('connected', 'Connected'),
+      StoryDef(
+        'base',
+        'Base (sample data)',
+        controls: [ControlDef.choice('state', _detailStates), ControlDef.toggle('deletable')],
+      ),
+    ],
+    build: (context, s) {
+      if (s.story == 'base') {
+        return BaseRoleDetails(
+          role: s.text('state') == 'data' ? _sampleRoles.first : null,
+          isLoading: s.text('state') == 'loading',
+          error: _error(context, s, 'admin.roles.details.error'),
+          onDelete: s.flag('deletable') ? () => s.emit('onDelete') : null,
+          sections: [
+            BaseRolePermissions(permissions: _sampleRoles.first.permissions, preferences: _prefs(s)),
+            BaseRoleAssignments(assignments: _sampleAssignments, preferences: _prefs(s)),
+          ],
+          preferences: _prefs(s),
+        );
+      }
+      final roleId = _id(s, 'roleId', 'role');
+      if (roleId.isEmpty) return _needsId('roleId', 'RoleList');
+      return RoleDetails(
+        key: ValueKey('roleDetails/$roleId'),
+        roleId: roleId,
+        editable: s.flag('editable'),
+        deletable: s.flag('deletable'),
+        administrationMode: _mode(s),
+        onDeleted: () => s.emit('onDeleted'),
+        preferences: _prefs(s),
+      );
+    },
+    code: (s) => s.story == 'base'
+        ? _snippet('BaseRoleDetails', [
+            'role: role',
+            'sections: [RolePermissions(roleId: role.id), RoleAssignments(roleId: role.id, ouId: role.ouId)]',
+            _stateArgs(s, 'admin.roles.details.error'),
+            if (s.flag('deletable')) 'onDelete: () {}',
+          ])
+        : _snippet('RoleDetails', [
+            'roleId: ${lit(_id(s, 'roleId', 'role').isEmpty ? 'role-id' : _id(s, 'roleId', 'role'))}',
+            if (s.flag('editable')) 'editable: true',
+            if (s.flag('deletable')) 'deletable: true',
+            if (_mode(s) == AdministrationMode.flow) 'administrationMode: AdministrationMode.flow',
+            'onDeleted: () {}',
           ]),
   ),
   _list<Agent>(
@@ -913,6 +1105,350 @@ final List<ComponentDef> adminComponentDefs = [
             if (s.flag('lifecycleActions')) 'lifecycleActions: true',
             if (_mode(s) == AdministrationMode.flow) 'administrationMode: AdministrationMode.flow',
             'onDeleted: () {}',
+          ]),
+  ),
+
+  // ── Projects, organization units and sharing ──────────────────────────
+  _list<Project>(
+    id: 'projectList',
+    name: 'ProjectList',
+    kind: 'project',
+    itemsArg: 'projects',
+    errorKey: 'admin.projects.list.error',
+    sample: _sampleProjects,
+    itemId: (p) => p.id,
+    connected: (s, limit, onSelect) =>
+        ProjectList(limit: limit, title: _opt(s, 'title'), onSelect: onSelect, preferences: _prefs(s)),
+    base: (s, items, error, onSelect) => BaseProjectList(
+      projects: items,
+      isLoading: s.text('state') == 'loading',
+      error: error,
+      title: _opt(s, 'title'),
+      onSelect: onSelect,
+      totalResults: items.length,
+      preferences: _prefs(s),
+    ),
+  ),
+  ComponentDef(
+    id: 'projectCreate',
+    name: 'ProjectCreate',
+    category: 'Admin',
+    defaults: _createDefaults,
+    controls: const [ControlDef.text('title')],
+    stories: const [
+      StoryDef('connected', 'Connected'),
+      StoryDef('base', 'Base (no request)', controls: _baseCreateControls),
+    ],
+    build: (context, s) => s.story == 'base'
+        ? BaseProjectCreate(
+            isSubmitting: s.flag('submitting'),
+            error: s.flag('showError') ? ThunderIDProvider.of(context).i18n.resolve('admin.projects.create.error') : null,
+            title: _opt(s, 'title'),
+            onSubmit: _emitWith(s, 'onSubmit', (r) => r.handle),
+            onCancel: () => s.emit('onCancel'),
+            preferences: _prefs(s),
+          )
+        : ProjectCreate(
+            title: _opt(s, 'title'),
+            onCreated: _emitWith(s, 'onCreated', (p) => p.id),
+            onCancel: () => s.emit('onCancel'),
+            preferences: _prefs(s),
+          ),
+    code: (s) => _snippet(s.story == 'base' ? 'BaseProjectCreate' : 'ProjectCreate', [
+      if (s.story == 'base' && s.flag('submitting')) 'isSubmitting: true',
+      if (s.story == 'base' && s.flag('showError')) "error: i18n.resolve('admin.projects.create.error')",
+      _litArg(s, 'title'),
+      s.story == 'base' ? 'onSubmit: (request) {}' : 'onCreated: (project) {}',
+      'onCancel: () {}',
+    ]),
+  ),
+  ComponentDef(
+    id: 'projectDetails',
+    name: 'ProjectDetails',
+    category: 'Admin',
+    defaults: const {'projectId': '', 'editable': true, 'deletable': false, 'state': 'data'},
+    controls: const [ControlDef.text('projectId'), ControlDef.toggle('editable'), ControlDef.toggle('deletable')],
+    stories: const [
+      StoryDef('connected', 'Connected'),
+      StoryDef(
+        'base',
+        'Base (sample data)',
+        controls: [ControlDef.choice('state', _detailStates), ControlDef.toggle('editable'), ControlDef.toggle('deletable')],
+      ),
+    ],
+    build: (context, s) {
+      if (s.story == 'base') {
+        return BaseProjectDetails(
+          project: s.text('state') == 'data' ? _sampleProjects.first : null,
+          isLoading: s.text('state') == 'loading',
+          error: _error(context, s, 'admin.projects.details.error'),
+          onUpdate: s.flag('editable') ? _emitWith(s, 'onUpdate', (r) => r.displayName) : null,
+          onDelete: s.flag('deletable') ? () => s.emit('onDelete') : null,
+          preferences: _prefs(s),
+        );
+      }
+      final projectId = _id(s, 'projectId', 'project');
+      if (projectId.isEmpty) return _needsId('projectId', 'ProjectList');
+      return ProjectDetails(
+        key: ValueKey('projectDetails/$projectId'),
+        projectId: projectId,
+        editable: s.flag('editable'),
+        deletable: s.flag('deletable'),
+        onDeleted: () => s.emit('onDeleted'),
+        preferences: _prefs(s),
+      );
+    },
+    code: (s) => s.story == 'base'
+        ? _snippet('BaseProjectDetails', [
+            'project: project',
+            _stateArgs(s, 'admin.projects.details.error'),
+            if (s.flag('editable')) 'onUpdate: (request) {}',
+            if (s.flag('deletable')) 'onDelete: () {}',
+          ])
+        : _snippet('ProjectDetails', [
+            'projectId: ${lit(_id(s, 'projectId', 'project').isEmpty ? 'project-id' : _id(s, 'projectId', 'project'))}',
+            if (s.flag('editable')) 'editable: true',
+            if (s.flag('deletable')) 'deletable: true',
+            'onDeleted: () {}',
+          ]),
+  ),
+  ComponentDef(
+    id: 'projectSwitcher',
+    name: 'ProjectSwitcher',
+    category: 'Admin',
+    defaults: const {'limit': '10', 'state': 'data'},
+    controls: const [ControlDef.choice('limit', ['5', '10', '20'])],
+    stories: const [
+      StoryDef('connected', 'Connected'),
+      StoryDef('base', 'Base (sample data)', controls: [ControlDef.choice('state', _states)]),
+    ],
+    build: (context, s) {
+      if (s.story == 'base') {
+        final projects = s.text('state') == 'empty' ? const <Project>[] : _sampleProjects;
+        return BaseProjectSwitcher(
+          projects: projects,
+          currentId: projects.isEmpty ? null : projects.first.id,
+          isLoading: s.text('state') == 'loading',
+          error: _error(context, s, 'admin.projects.list.error'),
+          onSelect: _emitWith(s, 'onSelect', (p) => p.id),
+          onClear: () => s.emit('onClear'),
+          preferences: _prefs(s),
+        );
+      }
+      final limit = int.tryParse(s.text('limit')) ?? 10;
+      return ProjectSwitcher(
+        key: ValueKey('projectSwitcher/$limit'),
+        limit: limit,
+        onSelect: _emitWith(s, 'onSelect', (p) => p.id),
+        preferences: _prefs(s),
+      );
+    },
+    code: (s) => s.story == 'base'
+        ? _snippet('BaseProjectSwitcher', [
+            'projects: projects',
+            'currentId: currentProjectId',
+            _stateArgs(s, 'admin.projects.list.error'),
+            'onSelect: (project) {}',
+            'onClear: () {}',
+          ])
+        : _snippet('ProjectSwitcher', [
+            if (s.text('limit') != '20') 'limit: ${s.text('limit')}',
+            'onSelect: (project) {}',
+          ]),
+  ),
+  _list<BasicOrganizationUnit>(
+    id: 'organizationUnitList',
+    name: 'OrganizationUnitList',
+    kind: 'organizationUnit',
+    itemsArg: 'units',
+    errorKey: 'admin.organization_units.list.error',
+    sample: _sampleUnits,
+    itemId: (u) => u.id,
+    extraConnected: const [ControlDef.text('parentId')],
+    extraArgs: [(s) => _litArg(s, 'parentId')],
+    connected: (s, limit, onSelect) => OrganizationUnitList(
+      parentId: _opt(s, 'parentId'),
+      limit: limit,
+      title: _opt(s, 'title'),
+      onSelect: onSelect,
+      preferences: _prefs(s),
+    ),
+    base: (s, items, error, onSelect) => BaseOrganizationUnitList(
+      units: items,
+      isLoading: s.text('state') == 'loading',
+      error: error,
+      title: _opt(s, 'title'),
+      onSelect: onSelect,
+      totalResults: items.length,
+      preferences: _prefs(s),
+    ),
+  ),
+  ComponentDef(
+    id: 'organizationUnitCreate',
+    name: 'OrganizationUnitCreate',
+    category: 'Admin',
+    defaults: const {..._createDefaults, 'parentId': ''},
+    controls: const [ControlDef.text('parentId'), ControlDef.text('title')],
+    stories: const [
+      StoryDef('connected', 'Connected'),
+      StoryDef('base', 'Base (no request)', controls: _baseCreateControls),
+    ],
+    build: (context, s) => s.story == 'base'
+        ? BaseOrganizationUnitCreate(
+            parents: [for (final unit in _sampleUnits) AdminSelectOption(value: unit.id, label: unit.name)],
+            isSubmitting: s.flag('submitting'),
+            error: s.flag('showError')
+                ? ThunderIDProvider.of(context).i18n.resolve('admin.organization_units.create.error')
+                : null,
+            title: _opt(s, 'title'),
+            onSubmit: _emitWith(s, 'onSubmit', (r) => '${r.handle}, parent ${r.parent ?? '-'}'),
+            onCancel: () => s.emit('onCancel'),
+            preferences: _prefs(s),
+          )
+        : OrganizationUnitCreate(
+            key: ValueKey('organizationUnitCreate/${s.text('parentId')}'),
+            parentId: _opt(s, 'parentId'),
+            title: _opt(s, 'title'),
+            onCreated: _emitWith(s, 'onCreated', (u) => u.id),
+            onCancel: () => s.emit('onCancel'),
+            preferences: _prefs(s),
+          ),
+    code: (s) => s.story == 'base'
+        ? _snippet('BaseOrganizationUnitCreate', [
+            'parents: parentOptions',
+            if (s.flag('submitting')) 'isSubmitting: true',
+            if (s.flag('showError')) "error: i18n.resolve('admin.organization_units.create.error')",
+            _litArg(s, 'title'),
+            'onSubmit: (request) {}',
+            'onCancel: () {}',
+          ])
+        : _snippet('OrganizationUnitCreate', [
+            _litArg(s, 'parentId'),
+            _litArg(s, 'title'),
+            'onCreated: (unit) {}',
+            'onCancel: () {}',
+          ]),
+  ),
+  ComponentDef(
+    id: 'organizationUnitDetails',
+    name: 'OrganizationUnitDetails',
+    category: 'Admin',
+    defaults: const {'organizationUnitId': '', 'editable': false, 'deletable': false, 'state': 'data'},
+    controls: const [
+      ControlDef.text('organizationUnitId'),
+      ControlDef.toggle('editable'),
+      ControlDef.toggle('deletable'),
+    ],
+    stories: const [
+      StoryDef('connected', 'Connected'),
+      StoryDef(
+        'base',
+        'Base (sample data)',
+        controls: [ControlDef.choice('state', _detailStates), ControlDef.toggle('editable'), ControlDef.toggle('deletable')],
+      ),
+    ],
+    build: (context, s) {
+      if (s.story == 'base') {
+        return BaseOrganizationUnitDetails(
+          unit: s.text('state') == 'data' ? _sampleUnit : null,
+          childUnits: const [BasicOrganizationUnit(id: 'ou-platform', handle: 'platform', name: 'Platform')],
+          users: const [OrganizationUnitUser(id: 'u-ada', display: 'Ada Lovelace')],
+          groups: const [OrganizationUnitGroup(id: 'g-eng', name: 'Engineering')],
+          roles: const [OrganizationUnitRole(id: 'r-admin', name: 'Administrator')],
+          isLoading: s.text('state') == 'loading',
+          error: _error(context, s, 'admin.organization_units.details.error'),
+          onSelectChild: _emitWith(s, 'onSelectChild', (u) => u.id),
+          onUpdate: s.flag('editable') ? _emitWith(s, 'onUpdate', (e) => e.handle) : null,
+          onDelete: s.flag('deletable') ? () => s.emit('onDelete') : null,
+          preferences: _prefs(s),
+        );
+      }
+      final unitId = _id(s, 'organizationUnitId', 'organizationUnit');
+      if (unitId.isEmpty) return _needsId('organizationUnitId', 'OrganizationUnitList');
+      return OrganizationUnitDetails(
+        key: ValueKey('organizationUnitDetails/$unitId'),
+        organizationUnitId: unitId,
+        editable: s.flag('editable'),
+        deletable: s.flag('deletable'),
+        onSelectChild: _select<BasicOrganizationUnit>(s, 'organizationUnit', (u) => u.id),
+        onDeleted: () => s.emit('onDeleted'),
+        preferences: _prefs(s),
+      );
+    },
+    code: (s) => s.story == 'base'
+        ? _snippet('BaseOrganizationUnitDetails', [
+            'unit: unit',
+            'childUnits: children',
+            'users: users',
+            'groups: groups',
+            'roles: roles',
+            _stateArgs(s, 'admin.organization_units.details.error'),
+            if (s.flag('editable')) 'onUpdate: (edit) {}',
+            if (s.flag('deletable')) 'onDelete: () {}',
+          ])
+        : _snippet('OrganizationUnitDetails', [
+            'organizationUnitId: ${lit(_id(s, 'organizationUnitId', 'organizationUnit').isEmpty ? 'ou-id' : _id(s, 'organizationUnitId', 'organizationUnit'))}',
+            if (s.flag('editable')) 'editable: true',
+            if (s.flag('deletable')) 'deletable: true',
+            'onDeleted: () {}',
+          ]),
+  ),
+  ComponentDef(
+    id: 'sharingPolicies',
+    name: 'SharingPolicies',
+    category: 'Admin',
+    defaults: const {'resourceType': 'application', 'resourceId': '', 'ouId': '', 'editable': false, 'state': 'data'},
+    controls: const [
+      ControlDef.choice('resourceType', _sharingTypes),
+      ControlDef.text('resourceId'),
+      ControlDef.text('ouId'),
+      ControlDef.toggle('editable'),
+    ],
+    stories: const [
+      StoryDef('connected', 'Connected'),
+      StoryDef('base', 'Base (sample data)', controls: [ControlDef.choice('state', _states), ControlDef.toggle('editable')]),
+    ],
+    build: (context, s) {
+      if (s.story == 'base') {
+        final editable = s.flag('editable');
+        return BaseSharingPolicies(
+          policies: s.text('state') == 'empty' ? const [] : _samplePolicies,
+          isLoading: s.text('state') == 'loading',
+          error: _error(context, s, 'admin.sharing.error'),
+          onCreate: editable ? _emitWith(s, 'onCreate', (r) => '${r.childUnits?['mode']}') : null,
+          onUpdate: editable ? (policy, request) => s.emit('onUpdate(${policy.id}, v${request.version})') : null,
+          onDelete: editable ? _emitWith(s, 'onDelete', (p) => p.id) : null,
+          preferences: _prefs(s),
+        );
+      }
+      final type = SharingResourceType.values.firstWhere(
+        (t) => t.value == s.text('resourceType'),
+        orElse: () => SharingResourceType.application,
+      );
+      final resourceId = _opt(s, 'resourceId') ?? _picked[type.value] ?? '';
+      if (resourceId.isEmpty) return _needsId('resourceId', '${type.name[0].toUpperCase()}${type.name.substring(1)}List');
+      return SharingPolicies(
+        key: ValueKey('sharingPolicies/${type.value}/$resourceId/${s.text('ouId')}'),
+        resourceType: type,
+        resourceId: resourceId,
+        ouId: _opt(s, 'ouId'),
+        editable: s.flag('editable'),
+        preferences: _prefs(s),
+      );
+    },
+    code: (s) => s.story == 'base'
+        ? _snippet('BaseSharingPolicies', [
+            'policies: ${s.text('state') == 'empty' ? 'const []' : 'policies'}',
+            _stateArgs(s, 'admin.sharing.error'),
+            if (s.flag('editable')) 'onCreate: (request) {}',
+            if (s.flag('editable')) 'onUpdate: (policy, request) {}',
+            if (s.flag('editable')) 'onDelete: (policy) {}',
+          ])
+        : _snippet('SharingPolicies', [
+            'resourceType: SharingResourceType.${s.text('resourceType')}',
+            'resourceId: ${lit(_opt(s, 'resourceId') ?? 'resource-id')}',
+            _litArg(s, 'ouId'),
+            if (s.flag('editable')) 'editable: true',
           ]),
   ),
 ];
