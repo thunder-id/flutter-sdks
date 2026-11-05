@@ -356,6 +356,26 @@ void main() {
       expect(find.text('No owner'), findsOneWidget);
       expect(find.byKey(const Key('thunderid-action-agent-details-delete')), findsNothing);
     });
+
+    testWidgets("BaseAgentDetails shows the owner's id", (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: BaseAgentDetails(
+              agent: Agent(
+                id: 'a1',
+                name: 'Bot',
+                ouId: 'ou1',
+                type: 'assistant',
+                owner: AgentOwner(id: 'jane@example.com', idType: AgentOwnerIdType.email, isLocal: false),
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(find.text('jane@example.com'), findsOneWidget);
+      expect(find.text('No owner'), findsNothing);
+    });
   });
   group('builder (custom UI)', () {
     testWidgets('a list hands its rows and paging to the builder instead of the table', (tester) async {

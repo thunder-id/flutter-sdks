@@ -61,7 +61,7 @@ const _sampleAgents = [
     type: 'assistant',
     description: 'Books travel for employees',
     clientId: 'concierge-client',
-    owner: 'u-ada',
+    owner: AgentOwner(id: 'u-ada'),
   ),
   Agent(id: 'a-triage', name: 'Ticket triage', ouId: _ou, type: 'worker', clientId: 'triage-client'),
 ];
@@ -287,7 +287,7 @@ ComponentDef _create({
             ])
           : _snippet(name, [
               _litArg(s, 'ouId'),
-              if (id == 'agentCreate') _litArg(s, 'owner'),
+              if (id == 'agentCreate' && _opt(s, 'owner') != null) 'owner: AgentOwner(id: ${lit(s.text('owner'))})',
               if (id == 'applicationCreate') 'onDone: () {}',
               _litArg(s, 'title'),
               'onCreated: (created) {}',
@@ -690,7 +690,7 @@ final List<ComponentDef> adminComponentDefs = [
     extraConnected: const [ControlDef.text('owner')],
     connected: (s) => AgentCreate(
       ouId: _opt(s, 'ouId'),
-      owner: _opt(s, 'owner'),
+      owner: _opt(s, 'owner') == null ? null : AgentOwner(id: s.text('owner')),
       title: _opt(s, 'title'),
       onCreated: _emitWith(s, 'onCreated', (a) => a.id),
       onCancel: () => s.emit('onCancel'),
