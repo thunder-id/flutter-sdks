@@ -1,6 +1,8 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import 'attribute_verification.dart';
+
 /// The signed-in user's profile, as returned by `GET /users/me`.
 class UserProfile {
   final String id;
@@ -10,6 +12,11 @@ class UserProfile {
   final String? display;
   final bool isReadOnly;
 
+  /// The user's verified attributes, keyed by attribute name. Read-only: only the server records a
+  /// verification. Null when the server does not report verification, so every status is unknown;
+  /// empty when none is verified.
+  final Map<String, VerifiedAttribute>? verifiedAttributes;
+
   const UserProfile({
     required this.id,
     this.ouId,
@@ -17,6 +24,7 @@ class UserProfile {
     this.attributes = const {},
     this.display,
     this.isReadOnly = false,
+    this.verifiedAttributes,
   });
 
   factory UserProfile.fromMap(Map<dynamic, dynamic> map) => UserProfile(
@@ -26,7 +34,17 @@ class UserProfile {
         attributes: _normalizeAttributes(map['attributes']),
         display: map['display'] as String?,
         isReadOnly: map['isReadOnly'] as bool? ?? false,
+        verifiedAttributes: _verifiedAttributes(map['verifiedAttributes']),
       );
+}
+
+Map<String, VerifiedAttribute>? _verifiedAttributes(Object? value) {
+  if (value is! Map) return null;
+  return {
+    for (final entry in value.entries)
+      if (entry.value is Map)
+        '${entry.key}': VerifiedAttribute.fromMap(entry.value as Map),
+  };
 }
 
 /// Attribute schema metadata returned by `GET /users/me/meta`.

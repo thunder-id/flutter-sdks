@@ -182,6 +182,21 @@ class ThunderIDMethodHandler(private val context: Context) {
                     client.updateUserCredentials(attribute, newValue)
                     result.success(null)
                 }
+                "verifyAttribute" -> {
+                    // Mirrors the two native overloads: a payload continues an execution, otherwise
+                    // the attribute and handle start one. The native SDK validates both.
+                    @Suppress("UNCHECKED_CAST")
+                    val payloadMap = args["payload"] as? Map<String, Any?>
+                    val response = if (payloadMap != null) {
+                        client.verifyAttribute(buildPayload(payloadMap))
+                    } else {
+                        client.verifyAttribute(
+                            attribute = args["attribute"] as? String ?: "",
+                            handle = args["handle"] as? String ?: ""
+                        )
+                    }
+                    result.success(encodeFlowResponse(response))
+                }
                 "getFlowMeta" -> {
                     val appId = args["applicationId"] as? String ?: ""
                     val language = args["language"] as? String ?: "en-US"
@@ -318,6 +333,8 @@ class ThunderIDMethodHandler(private val context: Context) {
         "attributes" to profile.attributes,
         "display" to profile.display,
         "isReadOnly" to profile.isReadOnly,
+        // Absent (null) means the server does not report verification, which differs from none verified.
+        "verifiedAttributes" to profile.verifiedAttributes?.mapValues { mapOf("verifiedAt" to it.value.verifiedAt) },
     )
 
     private fun encodeAttributeSchema(schema: AttributeSchema): Map<String, Any?> = mapOf(
