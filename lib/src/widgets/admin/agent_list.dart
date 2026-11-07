@@ -128,7 +128,7 @@ class BaseAgentList extends StatelessWidget {
                   onChange: onPageChange!,
                 ),
           columns: [
-            AdminColumn(header: ac.t('admin.agents.list.columns.name'), build: (agent) => Text(agent.name)),
+            AdminColumn(header: ac.t('admin.agents.list.columns.name'), build: (agent) => Text(resolveAgentName(agent))),
             AdminColumn(header: ac.t('admin.agents.list.columns.type'), build: (agent) => Text(agent.type)),
             AdminColumn(
               header: ac.t('admin.agents.list.columns.client_id'),

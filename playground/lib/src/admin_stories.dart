@@ -55,7 +55,8 @@ const _sampleRoles = [
 const _sampleAgents = [
   Agent(
     id: 'a-concierge',
-    name: 'Concierge',
+    display: 'Concierge',
+    attributes: {'name': 'Concierge'},
     ouId: _ou,
     ouHandle: 'default',
     type: 'assistant',
@@ -63,7 +64,14 @@ const _sampleAgents = [
     clientId: 'concierge-client',
     owner: 'u-ada',
   ),
-  Agent(id: 'a-triage', name: 'Ticket triage', ouId: _ou, type: 'worker', clientId: 'triage-client'),
+  Agent(
+    id: 'a-triage',
+    display: 'Ticket triage',
+    attributes: {'name': 'Ticket triage'},
+    ouId: _ou,
+    type: 'worker',
+    clientId: 'triage-client',
+  ),
 ];
 
 const _sampleMembers = [
@@ -739,7 +747,8 @@ final List<ComponentDef> adminComponentDefs = [
           agent: s.text('state') == 'data'
               ? Agent(
                   id: sample.id,
-                  name: sample.name,
+                  display: sample.display,
+                  attributes: sample.attributes,
                   ouId: sample.ouId,
                   ouHandle: sample.ouHandle,
                   type: sample.type,
