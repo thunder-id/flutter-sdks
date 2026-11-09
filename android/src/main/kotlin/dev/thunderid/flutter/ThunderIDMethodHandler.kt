@@ -5,8 +5,8 @@ import android.content.Context
 import android.net.Uri
 import io.flutter.plugin.common.MethodChannel.Result
 import dev.thunderid.android.*
-import dev.thunderid.android.auth.FederatedAuthSession
-import dev.thunderid.android.auth.PasskeyClient
+import dev.thunderid.android.api.auth.FederatedAuthSession
+import dev.thunderid.android.api.auth.PasskeyClient
 import kotlinx.coroutines.CancellationException
 import java.security.MessageDigest
 import java.security.SecureRandom
