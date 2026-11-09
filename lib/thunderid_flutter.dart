@@ -110,4 +110,4 @@ export 'src/widgets/common/logo/avatar_logo.dart';
 export 'src/widgets/common/logo/curated_logo_icons.dart';
 export 'src/widgets/common/logo/logo_spec.dart';
 export 'src/widgets/common/logo/thunderid_logo.dart';
-export 'src/widgets/thunderid_provider.dart';
+export 'src/widgets/thunderid_provider.dart' hide captureThunderIDProvider;

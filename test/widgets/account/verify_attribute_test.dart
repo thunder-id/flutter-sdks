@@ -817,16 +817,23 @@ void main() {
       expect(find.byKey(const Key('thunderid-verify-email')), findsNothing);
     });
 
+    // Pumps through the editor closing and the verification page opening.
+    Future<void> openVerificationPage(WidgetTester tester) async {
+      await tester.pump();
+      await tester.pump(_routeTransition);
+      await tester.pump();
+      await tester.pump(_routeTransition);
+      await _settle(tester);
+    }
+
     testWidgets(
-        'Verify in the editor closes it and opens the verification under the row',
+        'Verify in the editor closes it and opens the verification on its own page',
         (tester) async {
       h.verifyResponses.add((_) => _codeStep());
       await showProfile(tester);
       await openEmailEditor(tester);
       await tester.tap(find.byKey(const Key('thunderid-verify-email')));
-      await tester.pump();
-      await tester.pump(_routeTransition);
-      await _settle(tester);
+      await openVerificationPage(tester);
       expect(
         find.byKey(const Key('thunderid-action-saveProfileField')),
         findsNothing,
@@ -837,6 +844,96 @@ void main() {
         containsPair('attribute', 'email'),
       );
       expect(find.byKey(const Key('thunderid-field-otp')), findsOneWidget);
+      // The page covers the profile rather than opening inside it.
+      expect(find.text('Edit'), findsNothing);
+      expect(find.text('Personal info'), findsOneWidget);
+    });
+
+    testWidgets('the verification page works with the provider above the app',
+        (tester) async {
+      h.verifyResponses.add((_) => _codeStep());
+      await tester.pumpWidget(
+        const ThunderIDProvider(
+          config: ThunderIDConfig(
+            baseUrl: 'https://localhost:8090',
+            clientId: 'test',
+            applicationId: 'app-1',
+          ),
+          child: MaterialApp(
+            home: Scaffold(body: SingleChildScrollView(child: UserProfile())),
+          ),
+        ),
+      );
+      await _settle(tester);
+      await openEmailEditor(tester);
+      await tester.tap(find.byKey(const Key('thunderid-verify-email')));
+      await openVerificationPage(tester);
+      expect(find.byKey(const Key('thunderid-field-otp')), findsOneWidget);
+      expect(
+        h.verifyCalls.single.arguments,
+        containsPair('attribute', 'email'),
+      );
+    });
+
+    for (final exit in ['back', 'cancel']) {
+      testWidgets('leaving the verification page by $exit returns to the profile',
+          (tester) async {
+        h.verifyResponses
+          ..add((_) => _codeStep())
+          ..add((_) => _codeStep());
+        await showProfile(tester);
+        await openEmailEditor(tester);
+        await tester.tap(find.byKey(const Key('thunderid-verify-email')));
+        await openVerificationPage(tester);
+        await tester.tap(
+          exit == 'back'
+              ? find.text('Personal info')
+              : find.byKey(const Key('thunderid-action-verificationCancel')),
+        );
+        await tester.pump();
+        await tester.pump(_routeTransition);
+        await _settle(tester);
+        expect(find.byKey(const Key('thunderid-field-otp')), findsNothing);
+        expect(find.bySemanticsLabel('Unverified'), findsNWidgets(2));
+
+        // The closed verification can be opened again, starting a new flow.
+        await openEmailEditor(tester);
+        await tester.tap(find.byKey(const Key('thunderid-verify-email')));
+        await openVerificationPage(tester);
+        expect(find.byKey(const Key('thunderid-field-otp')), findsOneWidget);
+        expect(h.verifyCalls, hasLength(2));
+      });
+    }
+
+    testWidgets('saving a changed email in the editor opens its verification page',
+        (tester) async {
+      h.onUpdateProfile = (call) {
+        final attributes =
+            ((call.arguments as Map)['payload'] as Map).cast<String, Object?>();
+        return {
+          'id': 'user-1',
+          'attributes': attributes,
+          'verifiedAttributes': <String, Object?>{},
+        };
+      };
+      h.verifyResponses.add((_) => _codeStep());
+      await showProfile(tester);
+      await openEmailEditor(tester);
+      await tester.enterText(
+        find.byKey(const Key('thunderid-field-profile-email')),
+        'new@example.com',
+      );
+      await tester.tap(find.byKey(const Key('thunderid-action-saveProfileField')));
+      await openVerificationPage(tester);
+      expect(
+        find.byKey(const Key('thunderid-action-saveProfileField')),
+        findsNothing,
+      );
+      expect(find.byKey(const Key('thunderid-field-otp')), findsOneWidget);
+      expect(
+        h.verifyCalls.single.arguments,
+        containsPair('attribute', 'email'),
+      );
     });
 
     testWidgets('the editor hides status and Verify once the value changes',
@@ -868,7 +965,7 @@ void main() {
       await showProfile(tester);
       await openEmailEditor(tester);
       await tester.tap(find.byKey(const Key('thunderid-verify-email')));
-      await _settle(tester);
+      await openVerificationPage(tester);
       await tester.enterText(
         find.byKey(const Key('thunderid-field-otp')),
         '123456',
@@ -877,8 +974,15 @@ void main() {
       await tester
           .tap(find.byKey(const Key('thunderid-action-action_email_verify')));
       await _settle(tester);
+      expect(find.text('Close'), findsOneWidget);
+      await tester
+          .tap(find.byKey(const Key('thunderid-action-verificationCancel')));
+      await tester.pump();
+      await tester.pump(_routeTransition);
+      await _settle(tester);
 
       expect(h.profileReads, readsBefore + 1);
+      expect(find.byKey(const Key('thunderid-field-otp')), findsNothing);
       expect(find.bySemanticsLabel('Verified'), findsOneWidget);
       expect(find.byKey(const Key('thunderid-verify-email')), findsNothing);
     });

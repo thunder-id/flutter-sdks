@@ -205,6 +205,23 @@ class ThunderIDState extends State<ThunderIDProvider> {
       );
 }
 
+/// Captures the [ThunderIDProvider] above [from] for a page pushed on a navigator that may sit
+/// above it. The page keeps the provider's state object, but the user, sign-in and locale values as
+/// they were at capture, so it suits short-lived pages. Not exported.
+Widget Function(Widget child) captureThunderIDProvider(BuildContext from) {
+  final scope = from.getInheritedWidgetOfExactType<_ThunderIDScope>();
+  if (scope == null) return (child) => child;
+  return (child) => _ThunderIDScope(
+        state: scope.state,
+        user: scope.user,
+        isSignedIn: scope.isSignedIn,
+        isLoading: scope.isLoading,
+        error: scope.error,
+        activeLocale: scope.activeLocale,
+        child: child,
+      );
+}
+
 class _ThunderIDScope extends InheritedWidget {
   final ThunderIDState state;
   final User? user;

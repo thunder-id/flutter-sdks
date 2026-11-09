@@ -399,8 +399,9 @@ void _ignoreProfile(model.UserProfile? profile) {}
 /// `internal/account_style.dart` for why.
 ///
 /// A stored email address or mobile number shows its verification status, as the server reports
-/// it, and an unverified one a Verify action that opens [VerifyAttribute] under the row, running the
-/// flow named by [verificationFlowHandle]. Saving a changed email opens it by itself.
+/// it, and an unverified one a Verify action on its edit page. Verify, or saving a changed email,
+/// pushes a full-screen page running [VerifyAttribute] with the flow named by
+/// [verificationFlowHandle]; closing it returns to the profile with the status read again.
 class UserProfile extends StatelessWidget {
   final Map<String, List<String>> attributeMapping;
   final VoidCallback? onSaved;
@@ -441,6 +442,7 @@ class UserProfile extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            _VerificationLauncher(state: state, flowHandle: verificationFlowHandle, i18n: i18n),
             if (state.displayName.isNotEmpty) ...[
               Center(
                 child: Column(
@@ -474,26 +476,12 @@ class UserProfile extends StatelessWidget {
                   label: field.label,
                   value: _fieldDisplayValue(field),
                   editLabel: i18n.resolve('userProfile.edit'),
-                  showDivider: field != visibleFields.last &&
-                      state.verifyingField != field.name,
+                  showDivider: field != visibleFields.last,
                   onEdit: field.isReadonly || field.isComplex
                       ? null
                       : () => _openFieldEditor(context, state, field, i18n),
                   detail: _verificationDetail(state, field, i18n),
                 ),
-                if (state.verifyingField == field.name)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 18),
-                    // BaseUserProfile's VerifiedProfileSink takes the profile it reads again.
-                    child: VerifyAttribute(
-                      key: ValueKey('verify-${field.name}'),
-                      attribute: field.name,
-                      flowHandle: verificationFlowHandle,
-                      attributeDisplayName: field.label,
-                      onDone: state.closeVerification,
-                      onCancel: state.closeVerification,
-                    ),
-                  ),
               ],
             ],
           ],
@@ -502,7 +490,8 @@ class UserProfile extends StatelessWidget {
     );
   }
 
-  /// The status under a row's stored value. Verify is offered on the field's edit page.
+  /// The status under a row's stored value. Verify is offered on the field's edit page, and the
+  /// verification opens on its own page.
   Widget? _verificationDetail(
     UserProfileState state,
     ProfileField field,
@@ -633,7 +622,7 @@ class _ProfileFieldEditPageState extends State<_ProfileFieldEditPage> {
   }
 
   /// The stored value's status, shown only while the field still holds that value, and Verify
-  /// for an unverified one. Verify leaves the editor unchanged and opens the verification.
+  /// for an unverified one. Verify closes the editor unsaved and opens the verification page.
   List<Widget> _verification() {
     final field = widget.field;
     final state = widget.state;
@@ -670,6 +659,132 @@ class _ProfileFieldEditPageState extends State<_ProfileFieldEditPage> {
         ),
       ],
     ];
+  }
+}
+
+/// Draws nothing: pushes the verification page when [UserProfileState.verifyingField] opens, the
+/// way the field editor is pushed, and closes the verification once that page is popped.
+class _VerificationLauncher extends StatefulWidget {
+  final UserProfileState state;
+  final String flowHandle;
+  final ThunderIDI18n i18n;
+
+  const _VerificationLauncher({
+    required this.state,
+    required this.flowHandle,
+    required this.i18n,
+  });
+
+  @override
+  State<_VerificationLauncher> createState() => _VerificationLauncherState();
+}
+
+class _VerificationLauncherState extends State<_VerificationLauncher> {
+  String? _shown;
+
+  @override
+  void initState() {
+    super.initState();
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(_VerificationLauncher oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _sync();
+  }
+
+  void _sync() {
+    final name = widget.state.verifyingField;
+    // One page at a time; a change while it is open waits for it to close.
+    if (name == null || _shown != null) return;
+    _shown = name;
+    // Pushing during build is not allowed, and the editor may still be popping.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _open(name));
+  }
+
+  Future<void> _open(String name) async {
+    if (!mounted) return;
+    final state = widget.state;
+    ProfileField? field;
+    for (final f in state.fields) {
+      if (f.name == name) field = f;
+    }
+    // The page sits outside this subtree, so it takes the provider, theme and profile sink with it.
+    final provide = captureThunderIDProvider(context);
+    final theme = Theme.of(context);
+    await Navigator.of(context).push(
+      PageRouteBuilder<void>(
+        opaque: true,
+        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+            FadeTransition(opacity: animation, child: child),
+        pageBuilder: (context, animation, secondaryAnimation) => provide(
+          Theme(
+            data: theme,
+            child: VerifiedProfileSink(
+              onProfileRead: state.applyVerifiedProfile,
+              child: _VerifyAttributePage(
+                attribute: name,
+                attributeDisplayName: field?.label ?? name,
+                flowHandle: widget.flowHandle,
+                backLabel: widget.i18n.resolve('userProfile.title'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    if (!mounted) return;
+    _shown = null;
+    widget.state.closeVerification();
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
+}
+
+/// Full-screen page running one attribute's verification. Back, Cancel and Close all pop it.
+class _VerifyAttributePage extends StatelessWidget {
+  final String attribute;
+  final String attributeDisplayName;
+  final String flowHandle;
+  final String backLabel;
+
+  const _VerifyAttributePage({
+    required this.attribute,
+    required this.attributeDisplayName,
+    required this.flowHandle,
+    required this.backLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = ThunderAccountColors.of(context);
+    void close() => Navigator.of(context).pop();
+    // A Scaffold, as on the edit page: the route adds no Material ancestor, and it keeps the
+    // form above the keyboard.
+    return Scaffold(
+      backgroundColor: colors.pageBackground,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ThunderAccountBackLink(label: backLabel, onTap: close),
+              const SizedBox(height: 16),
+              VerifyAttribute(
+                attribute: attribute,
+                flowHandle: flowHandle,
+                attributeDisplayName: attributeDisplayName,
+                onDone: close,
+                onCancel: close,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

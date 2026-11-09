@@ -403,6 +403,47 @@ class ThunderAccountAvatar extends StatelessWidget {
   }
 }
 
+/// Back chevron with the name of the page it returns to, at the top of a full-screen account page.
+class ThunderAccountBackLink extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+
+  const ThunderAccountBackLink({super.key, required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = ThunderAccountColors.of(context);
+    // The chevron glyph carries its own built-in padding, so its box's left edge doesn't line
+    // up with the title/description below it. Shifting the whole control left compensates,
+    // rather than a negative Padding, which Flutter rejects.
+    return Transform.translate(
+      offset: const Offset(-6, 0),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.only(top: 6, bottom: 6, right: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.chevron_left, color: colors.text, size: 26),
+              const SizedBox(width: 2),
+              Text(
+                label,
+                style: TextStyle(
+                  color: colors.text,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Full-screen edit page: back button, title, description, then whatever [child] the caller
 /// supplies (one or more [ThunderAccountField]s), with a Cancel/Save button row pinned to the
 /// bottom. Matches the design's edit-overlay pattern, shared by profile field edits and the
@@ -462,35 +503,7 @@ class ThunderAccountEditPage extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // The chevron glyph carries its own built-in padding, so its box's left
-                      // edge doesn't line up with the title/description below it. Shifting the
-                      // whole control left compensates, rather than a negative Padding, which
-                      // Flutter rejects.
-                      Transform.translate(
-                        offset: const Offset(-6, 0),
-                        child: InkWell(
-                          onTap: onCancel,
-                          borderRadius: BorderRadius.circular(8),
-                          child: Padding(
-                            padding: const EdgeInsets.only(top: 6, bottom: 6, right: 8),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.chevron_left, color: colors.text, size: 26),
-                                const SizedBox(width: 2),
-                                Text(
-                                  backLabel,
-                                  style: TextStyle(
-                                    color: colors.text,
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
+                      ThunderAccountBackLink(label: backLabel, onTap: onCancel),
                       const SizedBox(height: 4),
                       Text(
                         title,
