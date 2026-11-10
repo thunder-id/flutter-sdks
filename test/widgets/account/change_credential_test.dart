@@ -51,7 +51,19 @@ void main() {
       expect(mapCredentialError(ThunderIDErrorCode.invalidInput), CredentialField.newValue);
     });
 
+    test('a forbidden invalid current value maps to the current-value field', () {
+      expect(
+        mapCredentialError(ThunderIDErrorCode.forbidden, 'USR-1047'),
+        CredentialField.currentValue,
+      );
+    });
+
+    test('a refused first credential maps to the form field', () {
+      expect(mapCredentialError(ThunderIDErrorCode.invalidInput, 'USR-1048'), CredentialField.form);
+    });
+
     test('every other code maps to the form field', () {
+      expect(mapCredentialError(ThunderIDErrorCode.forbidden), CredentialField.form);
       expect(mapCredentialError(ThunderIDErrorCode.serverError), CredentialField.form);
       expect(mapCredentialError(ThunderIDErrorCode.networkError), CredentialField.form);
     });

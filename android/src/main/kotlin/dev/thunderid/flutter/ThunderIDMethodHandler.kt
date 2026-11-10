@@ -178,8 +178,9 @@ class ThunderIDMethodHandler(private val context: Context) {
                 }
                 "updateUserCredentials" -> {
                     val attribute = args["attribute"] as? String ?: "password"
+                    val currentValue = args["currentValue"] as? String
                     val newValue = args["newValue"] as? String ?: ""
-                    client.updateUserCredentials(attribute, newValue)
+                    client.updateUserCredentials(attribute = attribute, currentValue = currentValue, newValue = newValue)
                     result.success(null)
                 }
                 "getFlowMeta" -> {
@@ -190,7 +191,7 @@ class ThunderIDMethodHandler(private val context: Context) {
                 else -> result.notImplemented()
             }
         } catch (e: IAMException) {
-            result.error(e.code.value, e.message, null)
+            result.error(e.code.value, e.message, e.serverError?.let { mapOf("serverCode" to it.code) })
         } catch (e: CancellationException) {
             // User dismissed the Custom Tab without completing federated sign-in — surfaced as a
             // typed cancellation so the Dart layer can reset state silently instead of erroring.

@@ -379,16 +379,18 @@ class ThunderIDClient {
   /// Changes one of the signed-in user's own credentials via
   /// `POST /users/me/update-credentials`.
   ///
-  /// The self-service write path does not verify the account's existing value today, so this
-  /// call collects only the new value, matching the Android/iOS/React/Vue SDKs.
+  /// Changing a credential the user already holds needs its [currentValue]. A user setting a
+  /// credential for the first time has none to send.
   Future<void> updateUserCredentials({
     String attribute = 'password',
+    String? currentValue,
     required String newValue,
   }) async {
     _requireInitialized();
     _refuseOnBackend('updateUserCredentials');
     await _channel.invoke<void>('updateUserCredentials', {
       'attribute': attribute,
+      if (currentValue != null && currentValue.isNotEmpty) 'currentValue': currentValue,
       'newValue': newValue,
     });
   }

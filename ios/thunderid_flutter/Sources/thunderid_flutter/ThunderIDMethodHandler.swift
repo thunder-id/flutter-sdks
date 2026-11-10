@@ -138,8 +138,13 @@ final class ThunderIDMethodHandler {
 
             case "updateUserCredentials":
                 let attribute = args["attribute"] as? String ?? "password"
+                let currentValue = args["currentValue"] as? String
                 let newValue = args["newValue"] as? String ?? ""
-                try await client.updateUserCredentials(attribute: attribute, newValue: newValue)
+                try await client.updateUserCredentials(
+                    attribute: attribute,
+                    currentValue: currentValue,
+                    newValue: newValue
+                )
                 result(nil)
 
             case "getFlowMeta":
@@ -152,7 +157,8 @@ final class ThunderIDMethodHandler {
                 result(FlutterMethodNotImplemented)
             }
         } catch let error as ThunderIDError {
-            result(FlutterError(code: error.code.rawValue, message: error.message, details: nil))
+            let details = error.serverError.map { ["serverCode": $0.code] }
+            result(FlutterError(code: error.code.rawValue, message: error.message, details: details))
         } catch {
             result(FlutterError(code: "UNKNOWN_ERROR", message: error.localizedDescription, details: nil))
         }

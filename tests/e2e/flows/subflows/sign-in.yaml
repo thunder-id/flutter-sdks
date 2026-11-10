@@ -1,0 +1,67 @@
+appId: dev.thunderid.Quickstart
+---
+# Signs in with E2E_USERNAME/E2E_PASSWORD via the server-driven credentials step and waits for the
+# authenticated "Session active" state. The caller defines both env vars.
+
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow:
+          when:
+            notVisible: "Sign in"
+          commands:
+            - launchApp:
+                clearState: true
+            - runFlow: ensure-signed-out.yaml
+      - tapOn: "Sign in"
+      - extendedWaitUntil:
+          visible:
+            id: "thunderid-field-username"
+          timeout: 25000
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow:
+          when:
+            notVisible:
+              id: "thunderid-field-username"
+          commands:
+            - launchApp:
+                clearState: true
+            - runFlow: ensure-signed-out.yaml
+            - tapOn: "Sign in"
+            - extendedWaitUntil:
+                visible:
+                  id: "thunderid-field-username"
+                timeout: 25000
+            - waitForAnimationToEnd:
+                timeout: 3000
+
+      - tapOn:
+          id: "thunderid-field-username"
+      - eraseText: 50
+      - inputText: ${E2E_USERNAME}
+      - extendedWaitUntil:
+          visible:
+            id: "thunderid-field-password"
+          timeout: 20000
+      - tapOn:
+          id: "thunderid-field-password"
+      - eraseText: 50
+      - inputText: ${E2E_PASSWORD}
+      - tapOn:
+          id: "thunderid-action-action_001"
+      - runFlow: dismiss-save-password.yaml
+      - extendedWaitUntil:
+          notVisible:
+            id: "thunderid-field-username"
+          timeout: 20000
+      - assertNotVisible: ".*NETWORK_ERROR.*"
+
+- extendedWaitUntil:
+    visible: "Session active"
+    timeout: 60000

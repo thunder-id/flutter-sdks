@@ -52,9 +52,11 @@ const Map<String, String> thunderDefaultStrings = {
   'changeCredential.section': 'Security',
   'changeCredential.heading': 'Change {credential}',
   'changeCredential.description': "Choose a strong {credentialLower} and don't reuse it for other accounts.",
+  'changeCredential.current.label': 'Current {credential}',
   'changeCredential.new.label': 'New {credential}',
   'changeCredential.confirm.label': 'Confirm New {credential}',
   'changeCredential.mismatch.error': '{credential}s do not match.',
+  'changeCredential.current.error': 'Your current {credentialLower} is incorrect.',
   'changeCredential.requirements.pattern': 'Must match the required format.',
   'changeCredential.generic.error':
       'An error occurred while updating your {credentialLower}. Please try again.',

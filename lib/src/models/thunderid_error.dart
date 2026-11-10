@@ -120,7 +120,10 @@ class IAMException implements Exception {
   final String message;
   final Object? cause;
 
-  const IAMException(this.code, this.message, {this.cause});
+  /// The server's own error code, such as `USR-1047`, when the native SDK received one.
+  final String? serverCode;
+
+  const IAMException(this.code, this.message, {this.cause, this.serverCode});
 
   @override
   String toString() => '[${code.value}] $message';

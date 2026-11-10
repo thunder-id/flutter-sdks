@@ -120,6 +120,8 @@ void main() {
         reason: 'disabled until both fields hold a matching value',
       );
 
+      await tester.enterText(find.byKey(const Key('thunderid-field-currentCredential')), '0ldP@ss');
+      await tester.pump();
       await tester.enterText(find.byKey(const Key('thunderid-field-newCredential')), 'n3wP@ss');
       await tester.pump();
       await tester.enterText(
@@ -139,6 +141,7 @@ void main() {
 
       final call = log.firstWhere((c) => c.method == 'updateUserCredentials');
       final args = call.arguments as Map<Object?, Object?>;
+      expect(args['currentValue'], '0ldP@ss');
       expect(args['newValue'], 'n3wP@ss');
       // A successful submit pops the page back to the row.
       expect(find.byKey(const Key('thunderid-field-newCredential')), findsNothing);
