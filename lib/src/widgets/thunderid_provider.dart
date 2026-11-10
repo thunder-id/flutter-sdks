@@ -66,6 +66,9 @@ class ThunderIDState extends State<ThunderIDProvider> {
   String? get error => _error;
   ThunderIDPreferences? get preferences => widget.config.preferences;
 
+  /// The configuration the provider initialized the client with.
+  ThunderIDConfig get config => widget.config;
+
   /// Mirrors [ThunderIDConfig.fetchUserProfile]. Off when sign-in runs on a backend: the profile
   /// comes from the claims the backend's session reports.
   bool get fetchUserProfileEnabled => widget.config.fetchUserProfile && widget.config.endpoints?.backend == null;
@@ -158,6 +161,20 @@ class ThunderIDState extends State<ThunderIDProvider> {
     unawaited(client.setCachedUser(merged).catchError((Object _) {}));
   }
 
+  /// Reads `/users/me` again and merges it into [user], as after a verification the server
+  /// recorded. Returns the profile, or null when it could not be read or [fetchUserProfileEnabled]
+  /// is off: a failed read leaves the status stale, not broken.
+  Future<UserProfile?> reloadUserProfile() async {
+    if (!fetchUserProfileEnabled) return null;
+    try {
+      final profile = await client.getUserProfile();
+      mergeUserProfile(profile);
+      return profile;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Pulls `/users/me` in the background and merges it into [user].
   ///
   /// Deliberately fire-and-forget: sign-in has already succeeded by this point, so a
@@ -185,6 +202,23 @@ class ThunderIDState extends State<ThunderIDProvider> {
         error: error,
         activeLocale: i18n.activeLocale,
         child: widget.child,
+      );
+}
+
+/// Captures the [ThunderIDProvider] above [from] for a page pushed on a navigator that may sit
+/// above it. The page keeps the provider's state object, but the user, sign-in and locale values as
+/// they were at capture, so it suits short-lived pages. Not exported.
+Widget Function(Widget child) captureThunderIDProvider(BuildContext from) {
+  final scope = from.getInheritedWidgetOfExactType<_ThunderIDScope>();
+  if (scope == null) return (child) => child;
+  return (child) => _ThunderIDScope(
+        state: scope.state,
+        user: scope.user,
+        isSignedIn: scope.isSignedIn,
+        isLoading: scope.isLoading,
+        error: scope.error,
+        activeLocale: scope.activeLocale,
+        child: child,
       );
 }
 

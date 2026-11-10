@@ -384,10 +384,62 @@ final List<CheckDef> checkDefs = [
           () => sdk.client.getUserProfile(),
           detail: (p) => '${p.attributes.length} attributes',
         );
-        return CheckResult.pass('${user.claims.length} claims, ${profile.attributes.length} profile attributes');
+        return CheckResult.pass(
+          '${user.claims.length} claims, ${profile.attributes.length} profile attributes',
+        );
       } on IAMException catch (e) {
-        return CheckResult.pass('${user.claims.length} claims; profile unavailable (${e.code.value})');
+        return CheckResult.pass(
+          '${user.claims.length} claims; profile unavailable (${e.code.value})',
+        );
       }
+    },
+  ),
+  CheckDef(
+    id: 'verification',
+    section: 'Session',
+    name: 'Attribute verification',
+    api: 'UserProfile.verifiedAttributes · client.verifyAttribute()',
+    run: (sdk, config) async {
+      _requireSignedIn(sdk);
+      // Starting a verification sends a message, so this check reads the status and probes the
+      // handle rule only. The VerifyAttribute story runs a real verification on request.
+      try {
+        await _log.trace(
+          'verifyAttribute',
+          () => sdk.client.verifyAttribute(attribute: 'email', handle: ''),
+        );
+        return const CheckResult.fail(
+          'A verification without a handle was not refused',
+        );
+      } on IAMException catch (e) {
+        if (e.code != ThunderIDErrorCode.invalidInput) rethrow;
+      }
+      final schema =
+          await _log.trace('getUserSchema', () => sdk.client.getUserSchema());
+      final profile = await _log.trace(
+        'getUserProfile',
+        () => sdk.client.getUserProfile(),
+        detail: (p) =>
+            'verifiedAttributes=${p.verifiedAttributes?.keys.join(',') ?? 'not reported'}',
+      );
+      final verifiable = schema.keys
+          .where(
+            (name) => AttributeVerification.isVerifiableAttribute(name, schema),
+          )
+          .toList();
+      final verified = profile.verifiedAttributes;
+      if (verified == null) {
+        return CheckResult.pass(
+          'Handle rule enforced; server does not report verification (${verifiable.length} verifiable)',
+        );
+      }
+      final statuses = verifiable.map(
+        (name) =>
+            '$name ${verified.containsKey(name) ? 'verified' : 'unverified'}',
+      );
+      return CheckResult.pass(
+        'Handle rule enforced; ${statuses.isEmpty ? 'no verifiable attributes' : statuses.join(', ')}',
+      );
     },
   ),
   const CheckDef(
