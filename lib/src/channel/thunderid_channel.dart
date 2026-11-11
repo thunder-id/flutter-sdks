@@ -15,8 +15,7 @@ class ThunderIDChannel {
       final result = await _channel.invokeMethod<T>(method, args);
       return result;
     } on PlatformException catch (e) {
-      final code = ThunderIDErrorCode.fromString(e.code);
-      throw IAMException(code, e.message ?? 'Platform error', cause: e);
+      throw _toException(e);
     }
   }
 
@@ -25,8 +24,7 @@ class ThunderIDChannel {
       final result = await _channel.invokeMethod<Map>(method, args);
       return result ?? {};
     } on PlatformException catch (e) {
-      final code = ThunderIDErrorCode.fromString(e.code);
-      throw IAMException(code, e.message ?? 'Platform error', cause: e);
+      throw _toException(e);
     }
   }
 
@@ -35,8 +33,19 @@ class ThunderIDChannel {
       final result = await _channel.invokeMethod<List>(method, args);
       return result ?? [];
     } on PlatformException catch (e) {
-      final code = ThunderIDErrorCode.fromString(e.code);
-      throw IAMException(code, e.message ?? 'Platform error', cause: e);
+      throw _toException(e);
     }
+  }
+
+  /// Converts a native failure, carrying the server's own error code when the native SDK sent one.
+  static IAMException _toException(PlatformException e) {
+    final details = e.details;
+    final serverCode = details is Map ? details['serverCode'] as String? : null;
+    return IAMException(
+      ThunderIDErrorCode.fromString(e.code),
+      e.message ?? 'Platform error',
+      cause: e,
+      serverCode: serverCode,
+    );
   }
 }

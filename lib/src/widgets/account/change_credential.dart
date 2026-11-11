@@ -10,6 +10,9 @@ import '../thunderid_provider.dart';
 
 /// The form field a credential-update failure belongs to.
 enum CredentialField {
+  /// The current value is missing or doesn't match.
+  currentValue,
+
   /// The new value failed a server-side check.
   newValue,
 
@@ -67,10 +70,25 @@ CredentialFormEvaluation evaluateCredentialForm(
   );
 }
 
-/// Maps a failure from the credential write path onto the field that caused it. `invalidInput`
-/// is the new value failing a server-side check.
-CredentialField mapCredentialError(ThunderIDErrorCode code) =>
-    code == ThunderIDErrorCode.invalidInput ? CredentialField.newValue : CredentialField.form;
+/// The server's code for a current value that is missing or doesn't match.
+const _invalidCurrentCredentialCode = 'USR-1047';
+
+/// The server's code for a credential the user doesn't hold yet, refused because they hold another.
+const _credentialSetNotAllowedCode = 'USR-1048';
+
+/// Maps a failure from the credential write path onto the field that caused it. A `forbidden`
+/// for a missing or wrong current value belongs to the current value. An `invalidInput` is the new
+/// value failing a server-side check, unless the server refused to set a credential the user
+/// doesn't hold yet.
+CredentialField mapCredentialError(ThunderIDErrorCode code, [String? serverCode]) {
+  if (code == ThunderIDErrorCode.forbidden && serverCode == _invalidCurrentCredentialCode) {
+    return CredentialField.currentValue;
+  }
+  if (code == ThunderIDErrorCode.invalidInput && serverCode != _credentialSetNotAllowedCode) {
+    return CredentialField.newValue;
+  }
+  return CredentialField.form;
+}
 
 /// Substitutes `{credential}`/`{credentialLower}` into a translation template.
 String substituteCredential(String template, String displayName) => template
@@ -99,6 +117,7 @@ class ChangeCredentialState {
   const ChangeCredentialState._(this._owner);
 
   String get credentialDisplayName => _owner._displayName;
+  String get currentValue => _owner._currentValue;
   String get newValue => _owner._newValue;
   String get confirmValue => _owner._confirmValue;
   String? get error => _owner._error;
@@ -111,6 +130,7 @@ class ChangeCredentialState {
 
   String? fieldError(CredentialField field) => _owner._fieldErrors[field];
 
+  void onCurrentValueChanged(String value) => _owner._setCurrentValue(value);
   void onNewValueChanged(String value) => _owner._setNewValue(value);
   void onConfirmValueChanged(String value) => _owner._setConfirmValue(value);
 
@@ -151,6 +171,7 @@ class BaseChangeCredential extends StatefulWidget {
 
 class _BaseChangeCredentialState extends State<BaseChangeCredential> {
   late String _displayName = widget.credentialDisplayName ?? titleCaseCredential(widget.attribute);
+  String _currentValue = '';
   String _newValue = '';
   String _confirmValue = '';
   String? _error;
@@ -197,9 +218,14 @@ class _BaseChangeCredentialState extends State<BaseChangeCredential> {
       _loading = true;
     });
     try {
-      await thunder.client.updateUserCredentials(attribute: widget.attribute, newValue: _newValue);
+      await thunder.client.updateUserCredentials(
+        attribute: widget.attribute,
+        currentValue: _currentValue,
+        newValue: _newValue,
+      );
       if (!mounted) return;
       setState(() {
+        _currentValue = '';
         _newValue = '';
         _confirmValue = '';
         _success = true;
@@ -207,7 +233,7 @@ class _BaseChangeCredentialState extends State<BaseChangeCredential> {
       widget.onSuccess?.call();
     } on IAMException catch (e) {
       if (!mounted) return;
-      setState(() => _applyError(thunder.i18n, e.code));
+      setState(() => _applyError(thunder.i18n, e.code, e.serverCode));
       widget.onError?.call();
     } catch (_) {
       if (!mounted) return;
@@ -220,19 +246,24 @@ class _BaseChangeCredentialState extends State<BaseChangeCredential> {
     }
   }
 
-  void _applyError(ThunderIDI18n i18n, ThunderIDErrorCode code) {
-    final message = translateCredential(i18n, _displayName, 'changeCredential.generic.error');
-    if (mapCredentialError(code) == CredentialField.newValue) {
-      _fieldErrors[CredentialField.newValue] = message;
-    } else {
-      _error = message;
+  void _applyError(ThunderIDI18n i18n, ThunderIDErrorCode code, String? serverCode) {
+    final field = mapCredentialError(code, serverCode);
+    switch (field) {
+      case CredentialField.currentValue:
+        _fieldErrors[field] = translateCredential(i18n, _displayName, 'changeCredential.current.error');
+      case CredentialField.newValue:
+        _fieldErrors[field] = translateCredential(i18n, _displayName, 'changeCredential.generic.error');
+      case CredentialField.form:
+        _error = translateCredential(i18n, _displayName, 'changeCredential.generic.error');
     }
   }
 
+  void _setCurrentValue(String value) => setState(() => _currentValue = value);
   void _setNewValue(String value) => setState(() => _newValue = value);
   void _setConfirmValue(String value) => setState(() => _confirmValue = value);
 
   void _resetValues() => setState(() {
+        _currentValue = '';
         _newValue = '';
         _confirmValue = '';
       });
@@ -347,10 +378,24 @@ class _ChangeCredentialEditPageState extends State<_ChangeCredentialEditPage> {
         Navigator.of(context).pop();
       },
       onSave: evaluation.isValid && !_submitting ? _submit : null,
-      errorText: state.error ?? fieldError,
+      errorText: state.error ?? state.fieldError(CredentialField.currentValue) ?? fieldError,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          ThunderAccountField(
+            label: translateCredential(
+              i18n,
+              state.credentialDisplayName,
+              'changeCredential.current.label',
+            ),
+            identifier: 'thunderid-field-currentCredential',
+            obscureText: true,
+            onChanged: (value) {
+              state.onCurrentValueChanged(value);
+              setState(() {});
+            },
+          ),
+          const SizedBox(height: 16),
           ThunderAccountField(
             label:
                 translateCredential(i18n, state.credentialDisplayName, 'changeCredential.new.label'),

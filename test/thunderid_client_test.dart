@@ -180,6 +180,17 @@ void main() {
       final args = call.arguments as Map<Object?, Object?>;
       expect(args['attribute'], 'pin');
       expect(args['newValue'], '4242');
+      expect(args.containsKey('currentValue'), false);
+    });
+
+    test('updateUserCredentials sends the current value when one is given', () async {
+      await client.initialize(config);
+      await client.updateUserCredentials(currentValue: '0ldP@ss', newValue: 'n3wP@ss');
+
+      final call = log.firstWhere((c) => c.method == 'updateUserCredentials');
+      final args = call.arguments as Map<Object?, Object?>;
+      expect(args['currentValue'], '0ldP@ss');
+      expect(args['newValue'], 'n3wP@ss');
     });
 
     test('updateUserCredentials defaults attribute to password', () async {
