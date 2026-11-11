@@ -25,6 +25,10 @@ enum ThunderIDErrorCode {
   invalidGrant,
   consentRequired,
 
+  /// The embedded flow execution expired, or already ended, so the server refused the step. The flow has to
+  /// start again.
+  flowExpired,
+
   // Registration
   userAlreadyExists,
   invalidInput,
@@ -87,6 +91,7 @@ enum ThunderIDErrorCode {
     'MFA_FAILED': ThunderIDErrorCode.mfaFailed,
     'INVALID_GRANT': ThunderIDErrorCode.invalidGrant,
     'CONSENT_REQUIRED': ThunderIDErrorCode.consentRequired,
+    'FLOW_EXPIRED': ThunderIDErrorCode.flowExpired,
     'USER_ALREADY_EXISTS': ThunderIDErrorCode.userAlreadyExists,
     'INVALID_INPUT': ThunderIDErrorCode.invalidInput,
     'INVITATION_CODE_INVALID': ThunderIDErrorCode.invitationCodeInvalid,

@@ -80,6 +80,10 @@ class EmbeddedFlowResponse {
   /// The `error.message` object: the key to translate before showing [failureReason].
   final FlowErrorText? errorMessage;
 
+  /// How many seconds the flow execution stays valid, from when this response was sent. Present while the
+  /// flow is not complete. A request for the execution after that fails with `ThunderIDErrorCode.flowExpired`.
+  final int? expiresIn;
+
   const EmbeddedFlowResponse({
     this.flowId,
     required this.flowStatus,
@@ -90,6 +94,7 @@ class EmbeddedFlowResponse {
     this.failureReason,
     this.challengeToken,
     this.errorMessage,
+    this.expiresIn,
   });
 
   /// The `data.additionalData` block, if present. Carries the WebAuthn/passkey ceremony
@@ -115,6 +120,7 @@ class EmbeddedFlowResponse {
       failureReason: map['failureReason'] as String?,
       challengeToken: map['challengeToken'] as String?,
       errorMessage: FlowErrorText.fromMap((map['error'] as Map?)?['message']),
+      expiresIn: (map['expiresIn'] as num?)?.toInt(),
     );
   }
 }
