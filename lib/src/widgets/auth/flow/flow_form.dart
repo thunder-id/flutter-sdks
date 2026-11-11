@@ -47,6 +47,9 @@ class FlowForm extends StatefulWidget {
   /// is set.
   final Future<void> Function(String actionId)? resend;
 
+  /// A message about the flow shown above the step, e.g. that it started again after it expired.
+  final String? notice;
+
   const FlowForm({
     super.key,
     required this.applicationId,
@@ -59,6 +62,7 @@ class FlowForm extends StatefulWidget {
     this.errorMessage,
     this.meta,
     this.resend,
+    this.notice,
   });
 
   @override
@@ -148,6 +152,11 @@ class _FlowFormState extends State<FlowForm> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (widget.notice != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _NoticeBanner(message: widget.notice!),
+          ),
         if (!hasError) ...[
           if (components.isNotEmpty) ...[
             ...components.map((c) => _renderComponent(context, c, actions)),
@@ -843,6 +852,41 @@ class _ErrorBanner extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Styled banner that tells the user about the flow, e.g. that it started again after it expired.
+class _NoticeBanner extends StatelessWidget {
+  final String message;
+
+  const _NoticeBanner({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Semantics(
+      liveRegion: true,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: colorScheme.primaryContainer,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.info_outline, color: colorScheme.onPrimaryContainer, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                message,
+                style: TextStyle(color: colorScheme.onPrimaryContainer, fontSize: 13),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

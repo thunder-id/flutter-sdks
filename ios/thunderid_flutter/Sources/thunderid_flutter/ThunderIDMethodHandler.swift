@@ -422,7 +422,7 @@ final class ThunderIDMethodHandler {
          "stepId": r.stepId, "type": r.type,
          "data": r.data.map { encodeFlowStepData($0) },
          "assertion": r.assertion, "failureReason": r.failureReason,
-         "challengeToken": r.challengeToken,
+         "challengeToken": r.challengeToken, "expiresIn": r.expiresIn,
          "error": r.error?.message.map {
              ["message": ["key": $0.key as Any, "defaultValue": $0.defaultValue as Any, "params": $0.params as Any]]
          }]

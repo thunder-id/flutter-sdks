@@ -4,9 +4,11 @@
 import 'package:flutter/widgets.dart';
 
 import '../../models/flow_models.dart';
+import '../../models/thunderid_error.dart';
 import '../../models/token_exchange_config.dart';
 import '../thunderid_provider.dart';
 import 'federated_redirect.dart';
+import 'flow/flow_expiry.dart';
 import 'flow/flow_form.dart';
 
 /// Full registration form driving the REGISTRATION flow (spec §8.4 Presentation).
@@ -33,6 +35,7 @@ class SignUp extends StatelessWidget {
         errorMessage: flowState.errorMessage,
         submit: flowState.submit,
         submitLabel: state.i18n.resolve('signUp.submit'),
+        notice: flowState.isFlowRestarted ? state.i18n.resolve('flow.expired.restarted') : null,
       ),
     );
   }
@@ -47,6 +50,10 @@ class SignUpState {
   final FlowErrorText? errorMessage;
   final Future<void> Function(String actionId, Map<String, String> inputs) submit;
 
+  /// Whether the flow was started again because the previous one expired. Clears once the user acts on the
+  /// new flow.
+  final bool isFlowRestarted;
+
   const SignUpState({
     required this.currentStep,
     required this.isLoading,
@@ -54,6 +61,7 @@ class SignUpState {
     required this.submit,
     this.loadingActionId,
     this.errorMessage,
+    this.isFlowRestarted = false,
   });
 }
 
@@ -90,10 +98,33 @@ class _BaseSignUpState extends State<BaseSignUp> {
     _errorMessage = null;
   }
 
+  bool _isFlowRestarted = false;
+
+  // Starts again after the current submit settles, so its loading state doesn't end the new flow's.
+  late final FlowExpiry _flowExpiry = FlowExpiry(restart: () => Future.microtask(_restartFlow));
+
   @override
   void initState() {
     super.initState();
+    _flowExpiry.listen();
     Future.microtask(_initFlow);
+  }
+
+  @override
+  void dispose() {
+    _flowExpiry.dispose();
+    super.dispose();
+  }
+
+  /// Starts an expired flow again in place.
+  Future<void> _restartFlow() async {
+    if (!mounted) return;
+    setState(() {
+      _currentStep = null;
+      _error = null;
+      _isFlowRestarted = true;
+    });
+    await _initFlow();
   }
 
   Future<void> _initFlow() async {
@@ -118,7 +149,7 @@ class _BaseSignUpState extends State<BaseSignUp> {
   Future<void> _submit(String actionId, Map<String, String> inputs) async {
     final flowId = _currentStep?.flowId;
     if (flowId == null) return;
-    setState(() { _isLoading = true; _loadingActionId = actionId; });
+    setState(() { _isLoading = true; _loadingActionId = actionId; _isFlowRestarted = false; });
     try {
       final state = ThunderIDProvider.of(context);
       final response = await state.client.signUp(
@@ -130,6 +161,10 @@ class _BaseSignUpState extends State<BaseSignUp> {
       );
       await _finishResponse(response, actionId: actionId, flowId: flowId);
     } catch (e) {
+      if (e is IAMException && e.code == ThunderIDErrorCode.flowExpired) {
+        _flowExpiry.expire();
+        return;
+      }
       if (mounted) setState(() => _error = e.toString());
       widget.onError?.call();
     } finally {
@@ -157,6 +192,7 @@ class _BaseSignUpState extends State<BaseSignUp> {
     // User dismissed the browser without completing sign-up — reset silently.
     if (response == null) return;
 
+    _flowExpiry.track(response);
     final isComplete = response.flowStatus == FlowStatus.complete ||
         (response.assertion?.isNotEmpty ?? false);
     if (isComplete) {
@@ -203,6 +239,7 @@ class _BaseSignUpState extends State<BaseSignUp> {
           error: _error,
           errorMessage: _errorMessage,
           submit: _submit,
+          isFlowRestarted: _isFlowRestarted,
         ),
       );
 }

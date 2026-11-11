@@ -22,6 +22,9 @@ const Map<String, String> thunderDefaultStrings = {
   'signUp.loading': 'Creating account\u2026',
   'signUp.error.generic': 'Registration failed. Please try again.',
 
+  // Flow expiry
+  'flow.expired.restarted': 'Your session expired, so we started again.',
+
   // Accept invite
   'acceptInvite.title': 'Accept Invitation',
   'acceptInvite.submit': 'Accept',

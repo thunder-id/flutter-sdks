@@ -355,7 +355,7 @@ class ThunderIDMethodHandler(private val context: Context) {
         "stepId" to r.stepId, "type" to r.type,
         "data" to r.data?.let { encodeFlowStepData(it) },
         "assertion" to r.assertion, "failureReason" to r.failureReason,
-        "challengeToken" to r.challengeToken,
+        "challengeToken" to r.challengeToken, "expiresIn" to r.expiresIn,
         "error" to r.error?.message?.let {
             mapOf("message" to mapOf("key" to it.key, "defaultValue" to it.defaultValue, "params" to it.params))
         }

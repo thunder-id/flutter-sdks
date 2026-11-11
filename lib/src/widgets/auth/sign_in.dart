@@ -5,10 +5,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/flow_models.dart';
+import '../../models/thunderid_error.dart';
 import '../../models/token_exchange_config.dart';
 import '../../models/user.dart';
 import '../thunderid_provider.dart';
 import 'federated_redirect.dart';
+import 'flow/flow_expiry.dart';
 import 'flow/flow_form.dart';
 
 /// State exposed to [BaseSignIn]'s builder.
@@ -21,6 +23,10 @@ class SignInState {
   final FlowErrorText? errorMessage;
   final Future<void> Function(String actionId, Map<String, String> inputs) submit;
 
+  /// Whether the flow was started again because the previous one expired. Clears once the user acts on the
+  /// new flow.
+  final bool isFlowRestarted;
+
   const SignInState({
     required this.currentStep,
     required this.isLoading,
@@ -28,6 +34,7 @@ class SignInState {
     required this.submit,
     this.loadingActionId,
     this.errorMessage,
+    this.isFlowRestarted = false,
   });
 }
 
@@ -61,6 +68,7 @@ class SignIn extends StatelessWidget {
         errorMessage: signInState.errorMessage,
         submit: signInState.submit,
         submitLabel: state.i18n.resolve('signIn.submit'),
+        notice: signInState.isFlowRestarted ? state.i18n.resolve('flow.expired.restarted') : null,
       ),
     );
   }
@@ -104,10 +112,33 @@ class _BaseSignInState extends State<BaseSignIn> {
   /// brand literal, since a consuming app may white-label the SDK.
   String get _logTag => '[${ThunderIDProvider.of(context).widget.config.vendor}SignIn]';
 
+  bool _isFlowRestarted = false;
+
+  // Starts again after the current submit settles, so its loading state doesn't end the new flow's.
+  late final FlowExpiry _flowExpiry = FlowExpiry(restart: () => Future.microtask(_restartFlow));
+
   @override
   void initState() {
     super.initState();
+    _flowExpiry.listen();
     Future.microtask(_initFlow);
+  }
+
+  @override
+  void dispose() {
+    _flowExpiry.dispose();
+    super.dispose();
+  }
+
+  /// Starts an expired flow again in place.
+  Future<void> _restartFlow() async {
+    if (!mounted) return;
+    setState(() {
+      _currentStep = null;
+      _error = null;
+      _isFlowRestarted = true;
+    });
+    await _initFlow();
   }
 
   Future<void> _initFlow() async {
@@ -136,7 +167,7 @@ class _BaseSignInState extends State<BaseSignIn> {
     final flowId = _currentStep?.flowId;
     debugPrint('$_logTag _submit flowId=$flowId actionId=$actionId inputs=${inputs.keys.toList()}');
     if (flowId == null) return;
-    setState(() { _isLoading = true; _loadingActionId = actionId; });
+    setState(() { _isLoading = true; _loadingActionId = actionId; _isFlowRestarted = false; });
     try {
       final response = await ThunderIDProvider.of(context).client.signIn(
         payload: EmbeddedSignInPayload(flowId: flowId, actionId: actionId, inputs: inputs, challengeToken: _currentStep?.challengeToken),
@@ -144,6 +175,10 @@ class _BaseSignInState extends State<BaseSignIn> {
       );
       await _finishResponse(response, actionId: actionId, flowId: flowId);
     } catch (e, st) {
+      if (e is IAMException && e.code == ThunderIDErrorCode.flowExpired) {
+        _flowExpiry.expire();
+        return;
+      }
       debugPrint('$_logTag _submit error: $e\n$st');
       if (mounted) setState(() => _error = e.toString());
       widget.onError?.call();
@@ -215,6 +250,7 @@ class _BaseSignInState extends State<BaseSignIn> {
         debugPrint('$_logTag submit response flowStatus=${response.flowStatus} hasAssertion=$hasAssertion inputs=$inputCount actions=$actionCount failureReason=${response.failureReason}');
         debugPrint('$_logTag submit response inputData=$inputList actionData=$actionList');
       }
+      _flowExpiry.track(response);
       final isComplete = response.flowStatus == FlowStatus.complete ||
           (response.assertion?.isNotEmpty ?? false);
       if (isComplete) {
@@ -339,6 +375,7 @@ class _BaseSignInState extends State<BaseSignIn> {
           error: _error,
           errorMessage: _errorMessage,
           submit: _submit,
+          isFlowRestarted: _isFlowRestarted,
         ),
       );
 }
