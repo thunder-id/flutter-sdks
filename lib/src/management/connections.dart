@@ -7,6 +7,7 @@ import '../models/management/management_page.dart';
 import '../models/management/resource_usage.dart';
 import '../models/thunderid_error.dart';
 import 'management_collection.dart';
+import 'management_filter.dart';
 import 'management_transport.dart';
 import 'thunderid_management_client.dart';
 
@@ -20,13 +21,16 @@ import 'thunderid_management_client.dart';
 /// [ManagementEndpointKeys.connections] override, then `{baseUrl}/connections`.
 extension ConnectionOperations on ThunderIDManagementClient {
   /// Lists the connections: every one, paged and optionally narrowed to a [category] (such as
-  /// `identity-provider`), or only those of [type].
+  /// `identity-provider`), or only those of [type]. With [ouId], lists the connections that
+  /// organization unit owns followed by the ones shared into it, instead of every connection the
+  /// caller can see.
   ///
   /// The server lists one type without paging, so with [type] the page holds every connection of
-  /// that type and [limit], [offset] and [category] are not sent.
+  /// that type and [limit], [offset], [category] and [ouId] are not sent.
   Future<ManagementPage<ConnectionInstance>> getConnections({
     ConnectionType? type,
     String? category,
+    String? ouId,
     int? limit,
     int? offset,
     String? url,
@@ -49,7 +53,12 @@ extension ConnectionOperations on ThunderIDManagementClient {
       await _send(
         'getConnections',
         'Failed to fetch connections',
-        query: {'category': category, 'limit': limit, 'offset': offset},
+        query: {
+          'category': category,
+          'filter': ouId == null ? null : ManagementFilter.equality('ouId', ouId),
+          'limit': limit,
+          'offset': offset,
+        },
         url: url,
         fetcher: fetcher,
       ),

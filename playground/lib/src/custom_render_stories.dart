@@ -67,6 +67,74 @@ Widget _themed(StoryContext s, Widget child) => Theme(
 
 final List<ComponentDef> customRenderComponentDefs = [
   ComponentDef(
+    id: 'customFlowVariables',
+    name: 'FlowVariablesForm → Material form',
+    category: 'Custom rendering',
+    stories: _stories,
+    controls: const [ControlDef.text('flowId'), ControlDef.text('ouId')],
+    defaults: const {'flowId': '', 'ouId': ''},
+    build: (context, s) {
+      Widget form(BuildContext context, FlowVariablesFormState form) => _FlowVariablesMaterialForm(form: form);
+      if (s.story == 'connected') {
+        final ouId = s.text('ouId').isEmpty ? ThunderIDProvider.of(context).defaultOuId : s.text('ouId');
+        if (s.text('flowId').isEmpty || ouId == null) return const Text('Set flowId and ouId in Controls.');
+        return _themed(
+          s,
+          FlowVariablesForm(
+            key: ValueKey('${s.text('flowId')}/$ouId'),
+            flowId: s.text('flowId'),
+            ouId: ouId,
+            onSaved: (values) => s.emit('onSaved(${values.keys.join(', ')})'),
+            builder: form,
+          ),
+        );
+      }
+      return _themed(
+        s,
+        BaseFlowVariables(
+          variables: const [
+            FlowVariableDefinition(
+              identifier: 'supportEmail',
+              type: FlowVariableTypes.emailInput,
+              label: 'Support email',
+              defaultValue: 'help@example.com',
+            ),
+            FlowVariableDefinition(
+              identifier: 'showSignUp',
+              type: FlowVariableTypes.booleanInput,
+              label: 'Show the sign-up link',
+              defaultValue: true,
+            ),
+          ],
+          onSubmit: (_, overrides) => s.emit('onSubmit(${overrides.keys.join(', ')})'),
+          builder: form,
+        ),
+      );
+    },
+    code: (s) => '''
+${s.story == 'connected' ? 'FlowVariablesForm(flowId: flowId, ouId: ouId,' : 'BaseFlowVariables(variables: variables, onSubmit: (values, overrides) {},'}
+  builder: (context, form) => Column(children: [
+    for (final variable in form.variables)
+      variable.type == FlowVariableTypes.booleanInput
+          ? SwitchListTile(
+              title: Text(variable.label ?? variable.identifier),
+              value: form.values[variable.identifier] == true,
+              onChanged: form.getRule(variable).editable ? (on) => form.onChanged(variable.identifier, on) : null,
+            )
+          : TextFormField(
+              initialValue: '\${form.values[variable.identifier] ?? ''}',
+              enabled: form.getRule(variable).editable,
+              decoration: InputDecoration(
+                labelText: variable.label ?? variable.identifier,
+                errorText: form.errors[variable.identifier],
+              ),
+              onChanged: (text) => form.onChanged(variable.identifier, text),
+            ),
+    FilledButton(onPressed: form.isSubmitting ? null : form.submit, child: const Text('Save')),
+  ]),
+)''',
+  ),
+  ComponentDef(
     id: 'customUserList',
     name: 'UserList → DataTable',
     category: 'Custom rendering',
@@ -704,4 +772,42 @@ class _VerificationCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _FlowVariablesMaterialForm extends StatelessWidget {
+  final FlowVariablesFormState form;
+
+  const _FlowVariablesMaterialForm({required this.form});
+
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final variable in form.variables)
+            variable.type == FlowVariableTypes.booleanInput
+                ? SwitchListTile(
+                    title: Text(variable.label ?? variable.identifier),
+                    value: form.values[variable.identifier] == true,
+                    onChanged:
+                        form.getRule(variable).editable ? (on) => form.onChanged(variable.identifier, on) : null,
+                  )
+                : Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: TextFormField(
+                      initialValue: '${form.values[variable.identifier] ?? ''}',
+                      enabled: form.getRule(variable).editable,
+                      decoration: InputDecoration(
+                        labelText: variable.label ?? variable.identifier,
+                        errorText: form.errors[variable.identifier],
+                      ),
+                      onChanged: (text) => form.onChanged(variable.identifier, text),
+                    ),
+                  ),
+          if (form.error != null) Text(form.error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton(onPressed: form.isSubmitting ? null : form.submit, child: const Text('Save')),
+          ),
+        ],
+      );
 }

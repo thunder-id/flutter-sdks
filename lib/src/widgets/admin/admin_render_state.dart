@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import '../../models/management/administration.dart';
 import '../../models/management/agent.dart';
 import '../../models/management/application.dart';
+import '../../models/management/flow_variable.dart';
 import '../../models/management/group.dart';
 import '../../models/management/managed_user.dart';
 import '../../models/management/role.dart';
@@ -531,4 +532,57 @@ class RolePermissionsState {
 
   /// A resource server's display name, or its identifier when the name is missing.
   String resourceServerName(String resourceServerId) => _resourceServerNames[resourceServerId] ?? resourceServerId;
+}
+
+/// What [BaseFlowVariables] hands its `builder`, so the form can be built with any UI.
+class FlowVariablesFormState {
+  /// The variables, as the flow declares them.
+  final List<FlowVariableDefinition> variables;
+
+  /// The current value of each variable, keyed by identifier.
+  final FlowVariableValues values;
+
+  /// The translated message to show under each variable that is not valid, keyed by identifier.
+  /// A variable appears once it was changed or a submit was attempted.
+  final Map<String, String> errors;
+
+  /// What the organization unit may do with a variable: whether it can set its own value, and the
+  /// default it starts from.
+  final ResolvedFlowVariableRule Function(FlowVariableDefinition definition) getRule;
+
+  /// The choices of a select variable, narrowed to what the unit may pick.
+  final List<FlowVariableOption> Function(FlowVariableDefinition definition) getOptions;
+
+  /// Sets the value of one variable.
+  final void Function(String identifier, Object value) onChanged;
+
+  /// Returns every variable to its default.
+  final VoidCallback resetToDefaults;
+
+  /// Whether every variable the unit may set holds a valid value.
+  final bool isValid;
+  final bool isSubmitting;
+
+  /// A translated message, or `null` when there is nothing to report.
+  final String? error;
+
+  /// Submits the current values. Does nothing while they are not valid; a custom UI then shows
+  /// [errors].
+  final VoidCallback submit;
+  final VoidCallback? onCancel;
+
+  const FlowVariablesFormState({
+    required this.variables,
+    required this.values,
+    required this.errors,
+    required this.getRule,
+    required this.getOptions,
+    required this.onChanged,
+    required this.resetToDefaults,
+    required this.isValid,
+    required this.isSubmitting,
+    required this.error,
+    required this.submit,
+    required this.onCancel,
+  });
 }

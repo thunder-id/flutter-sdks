@@ -103,20 +103,24 @@ class OverlayRule {
       );
 }
 
-/// How a shared user or application appears in one organization unit: whether it is visible
-/// there, the policies that put it there, and the rule for each attribute.
+/// How a shared user, application or flow appears in one organization unit: whether it is
+/// visible there, the policies that put it there, and the rule for each attribute. A flow's rules
+/// are keyed `variables.<identifier>`.
 class ResolvedOverlay {
   final String? ouId;
-  final bool? isOwned;
+
+  /// Whether the unit owns the resource. The server names it `isOwnedByOU` for every resource, flows
+  /// included.
+  final bool? isOwnedByOU;
   final bool? visible;
   final List<String> policyIds;
   final Map<String, OverlayRule> rules;
 
-  const ResolvedOverlay({this.ouId, this.isOwned, this.visible, this.policyIds = const [], this.rules = const {}});
+  const ResolvedOverlay({this.ouId, this.isOwnedByOU, this.visible, this.policyIds = const [], this.rules = const {}});
 
   factory ResolvedOverlay.fromJson(Map<String, dynamic> json) => ResolvedOverlay(
         ouId: readOptionalString(json, 'ouId'),
-        isOwned: readOptionalBool(json, 'isOwned'),
+        isOwnedByOU: readOptionalBool(json, 'isOwnedByOU'),
         visible: readOptionalBool(json, 'visible'),
         policyIds: readStringList(json, 'policyIds'),
         rules: {

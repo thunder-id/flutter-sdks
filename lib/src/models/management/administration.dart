@@ -100,6 +100,10 @@ class ManagedFlow {
   final String? createdAt;
   final String? updatedAt;
 
+  /// In a list requested for an organization unit: whether it owns the flow. `false` means the
+  /// flow was shared with it.
+  final bool? isOwnedByOU;
+
   const ManagedFlow({
     required this.id,
     required this.handle,
@@ -109,6 +113,7 @@ class ManagedFlow {
     this.isReadOnly = false,
     this.createdAt,
     this.updatedAt,
+    this.isOwnedByOU,
   });
 
   factory ManagedFlow.fromJson(Map<String, dynamic> json) => ManagedFlow(
@@ -120,6 +125,7 @@ class ManagedFlow {
         isReadOnly: readOptionalBool(json, 'isReadOnly') ?? false,
         createdAt: readOptionalString(json, 'createdAt'),
         updatedAt: readOptionalString(json, 'updatedAt'),
+        isOwnedByOU: readOptionalBool(json, 'isOwnedByOU'),
       );
 }
 

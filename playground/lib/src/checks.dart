@@ -837,6 +837,44 @@ final List<CheckDef> checkDefs = [
     },
   ),
   CheckDef(
+    id: 'flowVariables',
+    section: 'Management',
+    name: 'Flow variables of an organization unit',
+    api: 'management.getFlows(ouId) · getFlow(id, ouId) · getFlowVariables() · getFlowOverlayRules()',
+    run: (sdk, config) async {
+      final ouId = sdk.defaultOuId;
+      if (ouId == null) throw const CheckSkipped('The signed-in user has no organization unit.');
+      final management = _management(sdk);
+      final flows = await _log.trace(
+        'getFlows',
+        () => management.getFlows(ouId: ouId, limit: 100),
+        detail: _pageDetail,
+      );
+      final shared = flows.items.where((flow) => flow.isOwnedByOU == false).toList();
+      if (shared.isEmpty) return CheckResult.pass('${flows.totalResults} flows in the unit; none shared with it');
+      final flow = shared.first;
+      final definition = await _log.trace(
+        'getFlow',
+        () => management.getFlow(flow.id, ouId: ouId),
+        detail: (f) => '${getFlowVariableDefinitions(f).length} variables',
+      );
+      final values = await _log.trace(
+        'getFlowVariables',
+        () => management.getFlowVariables(flow.id, ouId),
+        detail: (v) => '${v.values.length} values',
+      );
+      final overlay = await _log.trace(
+        'getFlowOverlayRules',
+        () => management.getFlowOverlayRules(flow.id, ouId),
+        detail: (o) => '${o.rules.length} rules',
+      );
+      return CheckResult.pass(
+        '"${flow.name}" shares ${getFlowVariableDefinitions(definition).length} variables; '
+        'the unit set ${values.values.length}, ${overlay.rules.length} rules apply',
+      );
+    },
+  ),
+  CheckDef(
     id: 'designAndTranslations',
     section: 'Management',
     name: 'Design, translations and templates',

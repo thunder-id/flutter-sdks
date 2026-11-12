@@ -124,6 +124,43 @@ final _sampleApplication = Application.fromJson({
   ],
 });
 
+const _sampleFlows = [
+  ManagedFlow(id: 'f-login', handle: 'login', name: 'Login', flowType: 'AUTHENTICATION', isOwnedByOU: false),
+  ManagedFlow(id: 'f-signup', handle: 'signup', name: 'Sign-up', flowType: 'REGISTRATION', isOwnedByOU: false),
+];
+
+const _sampleVariables = [
+  FlowVariableDefinition(
+    identifier: 'supportEmail',
+    type: FlowVariableTypes.emailInput,
+    label: 'Support email',
+    description: 'Shown on the sign-in page',
+    defaultValue: 'help@example.com',
+  ),
+  FlowVariableDefinition(
+    identifier: 'mfa',
+    type: FlowVariableTypes.select,
+    label: 'Second factor',
+    defaultValue: 'EMAIL_OTP',
+    options: ['SMS_OTP', 'EMAIL_OTP', 'TOTP'],
+  ),
+  FlowVariableDefinition(
+    identifier: 'showSignUp',
+    type: FlowVariableTypes.booleanInput,
+    label: 'Show the sign-up link',
+    defaultValue: true,
+  ),
+];
+
+/// The unit may set the email and the second factor (but not TOTP); the sign-up link is the owner's.
+const _sampleOverlay = ResolvedOverlay(
+  isOwnedByOU: false,
+  rules: {
+    'variables.supportEmail': OverlayRule(editable: true),
+    'variables.mfa': OverlayRule(editable: true, excludedValues: ['TOTP']),
+  },
+);
+
 // ── Controls ──────────────────────────────────────────────────────────────
 
 const _states = ['data', 'loading', 'empty', 'forbidden'];
@@ -301,6 +338,127 @@ void Function(T) _emitWith<T>(StoryContext s, String action, String Function(T v
 // ── Components ────────────────────────────────────────────────────────────
 
 final List<ComponentDef> adminComponentDefs = [
+  ComponentDef(
+    id: 'sharedFlowList',
+    name: 'SharedFlowList',
+    category: 'Admin',
+    defaults: const {'ouId': '', 'ownership': 'shared', 'limit': '10', 'title': '', 'state': 'data'},
+    controls: const [
+      ControlDef.text('ouId'),
+      ControlDef.choice('ownership', ['shared', 'owned', 'all']),
+      ControlDef.choice('limit', ['5', '10', '20']),
+      ControlDef.text('title'),
+    ],
+    stories: const [
+      StoryDef('connected', 'Connected'),
+      StoryDef('base', 'Base (sample data)', controls: _baseListControls),
+    ],
+    build: (context, s) {
+      final onSelect = _select<ManagedFlow>(s, 'flow', (f) => f.id);
+      if (s.story == 'base') {
+        final flows = s.text('state') == 'empty' ? const <ManagedFlow>[] : _sampleFlows;
+        return BaseSharedFlowList(
+          flows: flows,
+          isLoading: s.text('state') == 'loading',
+          error: _error(context, s, 'admin.flows.list.error'),
+          title: _opt(s, 'title'),
+          onSelect: onSelect,
+          preferences: _prefs(s),
+        );
+      }
+      final ouId = _opt(s, 'ouId') ?? ThunderIDProvider.of(context).defaultOuId;
+      if (ouId == null) return _needsId('ouId', 'organization unit');
+      final ownership = SharedFlowOwnership.values.byName(s.text('ownership'));
+      final limit = int.tryParse(s.text('limit')) ?? 10;
+      return SharedFlowList(
+        key: ValueKey('sharedFlowList/$ouId/${ownership.name}/$limit'),
+        ouId: ouId,
+        ownership: ownership,
+        limit: limit,
+        title: _opt(s, 'title'),
+        onSelect: onSelect,
+        preferences: _prefs(s),
+      );
+    },
+    code: (s) => s.story == 'base'
+        ? _snippet('BaseSharedFlowList', [
+            'flows: ${s.text('state') == 'empty' ? 'const []' : 'flows'}',
+            _stateArgs(s, 'admin.flows.list.error'),
+            _litArg(s, 'title'),
+            'onSelect: (flow) {}',
+          ])
+        : _snippet('SharedFlowList', [
+            'ouId: ${lit(_opt(s, 'ouId') ?? 'ou-id')}',
+            if (s.text('ownership') != 'shared') 'ownership: SharedFlowOwnership.${s.text('ownership')}',
+            if (s.text('limit') != '20') 'limit: ${s.text('limit')}',
+            _litArg(s, 'title'),
+            'onSelect: (flow) {}',
+          ]),
+  ),
+  ComponentDef(
+    id: 'flowVariablesForm',
+    name: 'FlowVariablesForm',
+    category: 'Admin',
+    defaults: const {'flowId': '', 'ouId': '', 'scopeNotice': true, 'readOnly': false, 'submitting': false},
+    controls: const [
+      ControlDef.text('flowId'),
+      ControlDef.text('ouId'),
+      ControlDef.toggle('scopeNotice'),
+      ControlDef.toggle('readOnly'),
+    ],
+    stories: const [
+      StoryDef('connected', 'Connected'),
+      StoryDef(
+        'base',
+        'Base (sample data)',
+        controls: [ControlDef.toggle('scopeNotice'), ControlDef.toggle('readOnly'), ControlDef.toggle('submitting')],
+      ),
+    ],
+    build: (context, s) {
+      if (s.story == 'base') {
+        return BaseFlowVariables(
+          variables: _sampleVariables,
+          overlay: _sampleOverlay,
+          initialValues: const {'supportEmail': 'desk@example.com'},
+          ouName: 'Retail',
+          ownerName: 'Acme',
+          showScopeNotice: s.flag('scopeNotice'),
+          readOnly: s.flag('readOnly'),
+          isSubmitting: s.flag('submitting'),
+          onSubmit: (_, overrides) => s.emit('onSubmit(${overrides.keys.join(', ')})'),
+          preferences: _prefs(s),
+        );
+      }
+      final flowId = _id(s, 'flowId', 'flow');
+      final ouId = _opt(s, 'ouId') ?? ThunderIDProvider.of(context).defaultOuId;
+      if (flowId.isEmpty || ouId == null) return _needsId('flowId and ouId', 'SharedFlowList');
+      return FlowVariablesForm(
+        key: ValueKey('flowVariablesForm/$flowId/$ouId'),
+        flowId: flowId,
+        ouId: ouId,
+        showScopeNotice: s.flag('scopeNotice'),
+        readOnly: s.flag('readOnly'),
+        onSaved: (values) => s.emit('onSaved(${values.keys.join(', ')})'),
+        preferences: _prefs(s),
+      );
+    },
+    code: (s) => s.story == 'base'
+        ? _snippet('BaseFlowVariables', [
+            'variables: variables',
+            'overlay: overlay',
+            if (s.flag('scopeNotice')) 'showScopeNotice: true',
+            if (s.flag('readOnly')) 'readOnly: true',
+            if (s.flag('submitting')) 'isSubmitting: true',
+            'onSubmit: (values, overrides) {}',
+          ])
+        : _snippet('FlowVariablesForm', [
+            'flowId: ${lit(_id(s, 'flowId', 'flow').isEmpty ? 'flow-id' : _id(s, 'flowId', 'flow'))}',
+            'ouId: ${lit(_opt(s, 'ouId') ?? 'ou-id')}',
+            if (s.flag('scopeNotice')) 'showScopeNotice: true',
+            if (s.flag('readOnly')) 'readOnly: true',
+            'onSaved: (values) {}',
+          ]),
+  ),
   _list<ManagedUser>(
     id: 'userList',
     name: 'UserList',
