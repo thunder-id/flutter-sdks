@@ -38,6 +38,9 @@ jobs:
         uses: subosito/flutter-action@f2c4f6686ca8e8d6e6d0f28410eeef506ed66aff # v2
         with:
           channel: stable
+          # Pinned: 3.50 deprecates package:flutter/material.dart (analyze fails on the infos) and
+          # requires Gradle 9.3.1 for Android builds. Unpin once the SDK and samples are migrated.
+          flutter-version: 3.47.9
           cache: true
 
       - name: 🧭 Install Maestro

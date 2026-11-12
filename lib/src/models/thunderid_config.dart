@@ -72,9 +72,9 @@ class ThunderIDConfig {
   final TokenValidationConfig tokenValidation;
 
   // Endpoints
-  /// Endpoint overrides: the management collection URLs, and [EndpointsConfig.backend], which
-  /// hands sign-in to a backend the app owns. Kept out of [toMap], so none of it reaches the native
-  /// SDK or the OIDC provider metadata.
+  /// Endpoint overrides: the management collection URLs, [EndpointsConfig.wellKnown], and
+  /// [EndpointsConfig.backend], which hands sign-in to a backend the app owns. Only
+  /// [EndpointsConfig.wellKnown] goes into [toMap] and reaches the native SDK; the rest stays in Dart.
   final EndpointsConfig? endpoints;
 
   // Session
@@ -132,6 +132,7 @@ class ThunderIDConfig {
         'attestationEnabled': attestationEnabled,
         if (cloudProjectNumber != null) 'cloudProjectNumber': cloudProjectNumber,
         'tokenValidation': tokenValidation.toMap(),
+        if (endpoints?.wellKnown != null) 'wellKnown': endpoints!.wellKnown,
         if (preferences != null) 'preferences': preferences!.toMap(),
         'vendor': vendor,
       };
@@ -165,6 +166,13 @@ class EndpointsConfig {
   final String? import;
   final String? export;
 
+  /// The URL of the OpenID Connect discovery document the native SDK reads the sign-in endpoints
+  /// and the expected ID token issuer from. Unset, it is `{baseUrl}/.well-known/openid-configuration`.
+  /// Set it to use another provider while `baseUrl` stays its root, for example
+  /// `https://api.asgardeo.io/t/<org>/oauth2/token/.well-known/openid-configuration`. It can be
+  /// left out when the provider's issuer is its root.
+  final String? wellKnown;
+
   /// The app backend's auth endpoints. Setting them hands sign-in to the backend: the SDK then
   /// signs in, reads the session, and sends API calls through the backend, and the embedded
   /// flows are refused. Never inferred, and fixed for the life of the client.
@@ -192,6 +200,7 @@ class EndpointsConfig {
     this.configurationVersions,
     this.import,
     this.export,
+    this.wellKnown,
     this.backend,
   });
 

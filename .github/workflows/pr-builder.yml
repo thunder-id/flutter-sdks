@@ -54,6 +54,9 @@ jobs:
         uses: subosito/flutter-action@4cab68ce0f1c7c924f688bff4792e044f1aeb30c # v2
         with:
           channel: stable
+          # Pinned: 3.50 deprecates package:flutter/material.dart (analyze fails on the infos) and
+          # requires Gradle 9.3.1 for Android builds. Unpin once the SDK and samples are migrated.
+          flutter-version: 3.47.9
           cache: true
 
       - name: 📦 Get Dependencies
@@ -75,6 +78,9 @@ jobs:
         uses: subosito/flutter-action@4cab68ce0f1c7c924f688bff4792e044f1aeb30c # v2
         with:
           channel: stable
+          # Pinned: 3.50 deprecates package:flutter/material.dart (analyze fails on the infos) and
+          # requires Gradle 9.3.1 for Android builds. Unpin once the SDK and samples are migrated.
+          flutter-version: 3.47.9
           cache: true
 
       - name: 📦 Get Dependencies
@@ -96,6 +102,9 @@ jobs:
         uses: subosito/flutter-action@4cab68ce0f1c7c924f688bff4792e044f1aeb30c # v2
         with:
           channel: stable
+          # Pinned: 3.50 deprecates package:flutter/material.dart (analyze fails on the infos) and
+          # requires Gradle 9.3.1 for Android builds. Unpin once the SDK and samples are migrated.
+          flutter-version: 3.47.9
           cache: true
 
       - name: 📦 Get Dependencies
@@ -124,6 +133,9 @@ jobs:
         uses: subosito/flutter-action@4cab68ce0f1c7c924f688bff4792e044f1aeb30c # v2
         with:
           channel: stable
+          # Pinned: 3.50 deprecates package:flutter/material.dart (analyze fails on the infos) and
+          # requires Gradle 9.3.1 for Android builds. Unpin once the SDK and samples are migrated.
+          flutter-version: 3.47.9
           cache: true
 
       # The sample lives in thunder-id/samples; this fetches it and points it at this checkout.
@@ -166,6 +178,9 @@ jobs:
         uses: subosito/flutter-action@4cab68ce0f1c7c924f688bff4792e044f1aeb30c # v2
         with:
           channel: stable
+          # Pinned: 3.50 deprecates package:flutter/material.dart (analyze fails on the infos) and
+          # requires Gradle 9.3.1 for Android builds. Unpin once the SDK and samples are migrated.
+          flutter-version: 3.47.9
           cache: true
 
       # The playground depends on this checkout (thunderid_flutter: path: ..).
