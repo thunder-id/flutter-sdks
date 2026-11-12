@@ -116,7 +116,9 @@ class ThunderIDMethodHandler(private val context: Context) {
                     result.success(null)
                 }
                 "buildSignInUrl" -> {
-                    result.success(client.buildSignInUrl())
+                    // signIn reads the server's metadata first, so the URL uses the advertised
+                    // authorization endpoint (and a pushed request when the server requires one).
+                    result.success(client.signIn())
                 }
                 "handleRedirectCallback" -> {
                     val url = args["url"] as? String ?: ""
@@ -252,6 +254,7 @@ class ThunderIDMethodHandler(private val context: Context) {
                 null
             },
             tokenValidation = validation,
+            endpoints = ThunderIDEndpoints(wellKnown = args["wellKnown"] as? String),
             vendor = args["vendor"] as? String ?: ThunderIDConfig.DEFAULT_VENDOR
         )
     }
