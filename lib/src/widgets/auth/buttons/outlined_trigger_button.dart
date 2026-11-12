@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Shared outlined-button chrome for `eventType: TRIGGER` (federated login) actions: an
 /// optional icon slot, a label, and a rounded-rect stroke — matching the "Continue with X"

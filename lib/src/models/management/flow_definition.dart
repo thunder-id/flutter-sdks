@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import 'flow_variable.dart';
 import 'json_reader.dart';
 
 /// Flow type values a flow definition can have.
@@ -28,6 +29,17 @@ class FlowDefinition {
   final String? createdAt;
   final String? updatedAt;
 
+  /// The organization unit the flow was requested for, when it was.
+  final String? ouId;
+
+  /// Whether the organization unit the flow was requested for owns it.
+  final bool? isOwnedByOU;
+
+  /// Set on a flow shared with the requested organization unit, which comes back as its variables
+  /// only. A flow the unit owns declares them on its `VARIABLES` node instead; see
+  /// `getFlowVariableDefinitions`.
+  final List<FlowVariableDefinition>? variables;
+
   const FlowDefinition({
     required this.id,
     required this.name,
@@ -38,6 +50,9 @@ class FlowDefinition {
     this.nodes = const [],
     this.createdAt,
     this.updatedAt,
+    this.ouId,
+    this.isOwnedByOU,
+    this.variables,
   });
 
   factory FlowDefinition.fromJson(Map<String, dynamic> json) => FlowDefinition(
@@ -50,6 +65,14 @@ class FlowDefinition {
         nodes: _readNodes(json),
         createdAt: readOptionalString(json, 'createdAt'),
         updatedAt: readOptionalString(json, 'updatedAt'),
+        ouId: readOptionalString(json, 'ouId'),
+        isOwnedByOU: readOptionalBool(json, 'isOwnedByOU'),
+        variables: json['variables'] is List
+            ? readList(json, 'variables')
+                .map(FlowVariableDefinition.tryParse)
+                .whereType<FlowVariableDefinition>()
+                .toList(growable: false)
+            : null,
       );
 }
 

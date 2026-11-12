@@ -3,10 +3,13 @@
 
 import '../models/management/administration.dart';
 import '../models/management/flow_definition.dart';
+import '../models/management/flow_variable.dart';
 import '../models/management/json_reader.dart';
 import '../models/management/management_page.dart';
 import '../models/management/resource_usage.dart';
+import '../models/management/sharing_policy.dart';
 import 'management_collection.dart';
+import 'management_filter.dart';
 import 'management_transport.dart';
 import 'thunderid_management_client.dart';
 
@@ -18,8 +21,12 @@ import 'thunderid_management_client.dart';
 /// lookups ([AdministrationFlowOperations]) always use `{baseUrl}/flows`.
 extension FlowOperations on ThunderIDManagementClient {
   /// Lists the flow definitions, newest first; [flowType] (see [FlowTypes]) narrows the page.
+  ///
+  /// With [ouId], lists the flows that organization unit owns followed by the ones shared with it,
+  /// instead of every flow the caller can see; each then carries [ManagedFlow.isOwnedByOU].
   Future<ManagementPage<ManagedFlow>> getFlows({
     String? flowType,
+    String? ouId,
     int? limit,
     int? offset,
     String? url,
@@ -29,7 +36,12 @@ extension FlowOperations on ThunderIDManagementClient {
         await _send(
           'getFlows',
           'Failed to fetch flows',
-          query: {'flowType': flowType, 'limit': limit, 'offset': offset},
+          query: {
+            'filter': ouId == null ? null : ManagementFilter.equality('ouId', ouId),
+            'flowType': flowType,
+            'limit': limit,
+            'offset': offset,
+          },
           url: url,
           fetcher: fetcher,
         ),
@@ -37,9 +49,20 @@ extension FlowOperations on ThunderIDManagementClient {
         (item) => ManagedFlow.fromJson(readMap(item)),
       );
 
-  Future<FlowDefinition> getFlow(String flowId, {String? url, ManagementFetcher? fetcher}) async =>
+  /// Reads [flowId]. With [ouId], returns the flow as that organization unit sees it: a flow
+  /// shared with the unit comes back as its [FlowDefinition.variables] only.
+  Future<FlowDefinition> getFlow(String flowId, {String? ouId, String? url, ManagementFetcher? fetcher}) async =>
       FlowDefinition.fromJson(
-        readMap(await _send('getFlow', 'Failed to fetch flow', segments: [flowId], url: url, fetcher: fetcher)),
+        readMap(
+          await _send(
+            'getFlow',
+            'Failed to fetch flow',
+            segments: [flowId],
+            query: {'ouId': ouId},
+            url: url,
+            fetcher: fetcher,
+          ),
+        ),
       );
 
   Future<FlowDefinition> createFlow(CreateFlowRequest payload, {String? url, ManagementFetcher? fetcher}) async =>
@@ -148,6 +171,73 @@ extension FlowOperations on ThunderIDManagementClient {
             'getFlowUsages',
             'Failed to fetch flow usages',
             segments: [flowId, 'usages'],
+            url: url,
+            fetcher: fetcher,
+          ),
+        ),
+      );
+
+  /// Reads the values the organization unit [ouId] has set for [flowId]'s variables. The value in
+  /// force for a variable is this override, or else its default from [getFlow].
+  Future<FlowVariables> getFlowVariables(
+    String flowId,
+    String ouId, {
+    String? url,
+    ManagementFetcher? fetcher,
+  }) async =>
+      FlowVariables.fromJson(
+        readMap(
+          await _send(
+            'getFlowVariables',
+            'Failed to fetch flow variables',
+            segments: [flowId, 'variables'],
+            query: {'ouId': ouId},
+            url: url,
+            fetcher: fetcher,
+          ),
+        ),
+      );
+
+  /// Replaces the values the organization unit [ouId] holds for [flowId]'s variables with
+  /// [values]: a variable left out returns to its default. The server validates every value
+  /// before writing any.
+  Future<FlowVariables> updateFlowVariables(
+    String flowId,
+    String ouId,
+    FlowVariableValues values, {
+    String? url,
+    ManagementFetcher? fetcher,
+  }) async =>
+      FlowVariables.fromJson(
+        readMap(
+          await _send(
+            'updateFlowVariables',
+            'Failed to update flow variables',
+            method: 'PUT',
+            segments: [flowId, 'variables'],
+            body: {'ouId': ouId, 'values': values},
+            url: url,
+            fetcher: fetcher,
+          ),
+        ),
+      );
+
+  /// Reads what the organization unit [ouId] may do with [flowId]: whether it owns the flow, and
+  /// the effective rule for each variable a sharing policy names, keyed `variables.<identifier>`.
+  /// A unit no policy reaches gets a not-found error.
+  Future<ResolvedOverlay> getFlowOverlayRules(
+    String flowId,
+    String ouId, {
+    String? url,
+    ManagementFetcher? fetcher,
+  }) async =>
+      ResolvedOverlay.fromJson(
+        readMap(
+          await _send(
+            'getFlowOverlayRules',
+            'Failed to fetch overlay rules',
+            segments: [flowId, 'overlay-rules'],
+            query: {'ouId': ouId},
             url: url,
             fetcher: fetcher,
           ),

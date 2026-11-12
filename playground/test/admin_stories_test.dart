@@ -1,9 +1,9 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:thunderid_flutter/thunderid_flutter.dart';
 import 'package:thunderid_flutter_playground/src/config.dart';
 import 'package:thunderid_flutter_playground/src/management_endpoints.dart';
@@ -65,7 +65,7 @@ void main() {
   final admin = componentDefs.where((def) => def.category == 'Admin').toList();
 
   test('every admin widget has a story', () {
-    expect(admin.map((def) => def.name), hasLength(16));
+    expect(admin.map((def) => def.name), hasLength(18));
   });
 
   for (final def in admin) {
@@ -89,7 +89,8 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
-        expect(def.code(storyContext), contains(def.name));
+        // The Base variant of FlowVariablesForm is BaseFlowVariables, so match on the shared stem.
+        expect(def.code(storyContext), contains(def.name.replaceFirst(RegExp(r'Form$'), '')));
       });
     }
   }

@@ -3,9 +3,9 @@
 
 import 'dart:async';
 
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:thunderid_flutter/src/models/user_profile.dart' as model;
 import 'package:thunderid_flutter/src/widgets/auth/flow/flow_form.dart';
 import 'package:thunderid_flutter/thunderid_flutter.dart';
