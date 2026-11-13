@@ -51,7 +51,10 @@ Each admin widget has a **Connected** story (the real widget, talking to the man
 server). Base stories cover the loading, empty and forbidden states; the forbidden message comes
 from `toManagementErrorMessage()`. Detail stories (`UserDetails`, `GroupMembers`,
 `RolePermissions`, `RoleAssignments`, `AgentDetails`, `ApplicationDetails`) take an id control; leave it empty and they
-use the row you last selected in the matching Connected list story. Create stories use the
+use the row you last selected in the matching Connected list story. `UserDetails` also has **Verification link sent**
+and **Email verified** stories, which pass a sample user type schema; with `attributeVerification` on, its Connected
+story reads the user's type and sends a real verification link for an email-typed attribute, provided the server
+configures `adminAttributeVerificationFlow`. Create stories use the
 `ouId` control, which defaults to `THUNDERID_OU_ID` and then to the signed-in user's `ouId`
 claim.
 
@@ -61,7 +64,8 @@ Every admin widget, `Base*` and connected, takes an optional `builder`, the same
 it in place of its own UI. The builder gets the widget's state: `AdminListState` (rows, paging and selection),
 `NamedResourceFormState` and the other form states (values, setters and `submit`), or the details states (the record
 and its actions). The **Custom rendering** stories draw `UserList` as a Material `DataTable` with a pager,
-`GroupCreate` as Material text fields and `UserDetails` as a Material card.
+`GroupCreate` as Material text fields and `UserDetails` as a Material card, with each verifiable attribute's status and
+a **Verify** button for each of `sendableAttributes`.
 
 `VerifyAttribute` and `BaseVerifyAttribute` take the same `builder`. Their `VerifyAttributeState` carries the step's
 `inputNames`, `values` and `onValueChanged`, `submit` with `submitActionId`, `resend` with `resendActionId`, `done` for

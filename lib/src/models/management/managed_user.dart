@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import '../attribute_verification.dart';
 import 'access_status.dart';
 import 'json_reader.dart';
 
@@ -24,6 +25,10 @@ class ManagedUser {
   /// The effective access status, set by the server on a read.
   final AccessStatus? status;
 
+  /// The user's verified attributes, keyed by attribute name. Set by the server on a read: `null`
+  /// when it does not report verification, and empty when none is verified.
+  final Map<String, VerifiedAttribute>? verifiedAttributes;
+
   const ManagedUser({
     required this.id,
     required this.ouId,
@@ -33,6 +38,7 @@ class ManagedUser {
     this.isReadOnly = false,
     this.attributes = const {},
     this.status,
+    this.verifiedAttributes,
   });
 
   factory ManagedUser.fromJson(Map<String, dynamic> json) => ManagedUser(
@@ -44,7 +50,16 @@ class ManagedUser {
         isReadOnly: readOptionalBool(json, 'isReadOnly') ?? false,
         attributes: readMap(json['attributes']),
         status: AccessStatus.maybeFromJson(json['status']),
+        verifiedAttributes: _readVerifiedAttributes(json['verifiedAttributes']),
       );
+}
+
+Map<String, VerifiedAttribute>? _readVerifiedAttributes(Object? value) {
+  if (value is! Map) return null;
+  return {
+    for (final entry in value.entries)
+      if (entry.value is Map) '${entry.key}': VerifiedAttribute.fromMap(entry.value as Map),
+  };
 }
 
 /// A user type (user schema) a [ManagedUser] can be created as.

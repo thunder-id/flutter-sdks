@@ -27,7 +27,15 @@ const _detailUser = ManagedUser(
   type: 'customer',
   attributes: {'username': 'ada', 'email': 'ada@example.com', 'given_name': 'Ada', 'password': 'never shown'},
   status: AccessStatus(value: AccessStatusValue.locked),
+  verifiedAttributes: {},
 );
+
+/// The sample user's type schema, which makes its email verifiable.
+const EntityTypeSchema _detailUserSchema = {
+  'username': {'type': 'string'},
+  'email': {'type': 'email'},
+  'given_name': {'type': 'string'},
+};
 
 const _memberships = [
   MembershipGroup(id: 'g-eng', name: 'Engineering', ouId: _ou),
@@ -153,21 +161,15 @@ ${s.story == 'connected' ? 'GroupCreate(onCreated: (group) => open(group.id),' :
                 userId: s.text('userId'),
                 deletable: true,
                 lifecycleActions: true,
+                attributeVerification: true,
                 onDeleted: () => s.emit('onDeleted'),
                 builder: (context, details) => _UserCard(details: details),
               )
-            : BaseUserDetails(
-                user: _detailUser,
-                groups: _memberships,
-                onDelete: () => s.emit('onDelete'),
-                lifecycleActions: const [AccountLifecycleAction.unlock, AccountLifecycleAction.suspend],
-                onLifecycleAction: (action, note) => s.emit('onLifecycleAction: ${action.name}'),
-                builder: (context, details) => _UserCard(details: details),
-              ),
+            : _SampleUserDetails(s: s),
       );
     },
     code: (s) => '''
-${s.story == 'connected' ? "UserDetails(userId: '${s.text('userId')}', deletable: true, lifecycleActions: true," : 'BaseUserDetails(user: user, groups: groups, onDelete: () {}, lifecycleActions: actions, onLifecycleAction: run,'}
+${s.story == 'connected' ? "UserDetails(userId: '${s.text('userId')}', deletable: true, lifecycleActions: true, attributeVerification: true," : 'BaseUserDetails(user: user, groups: groups, userSchema: userType.schema, onDelete: () {}, lifecycleActions: actions, onLifecycleAction: run, onSendVerification: send,'}
   builder: (context, details) => Card(
     child: Column(children: [
       ListTile(title: Text(details.displayName), subtitle: Text(details.user?.status?.value ?? '')),
@@ -176,6 +178,16 @@ ${s.story == 'connected' ? "UserDetails(userId: '${s.text('userId')}', deletable
       // Ask before suspending or unsuspending; an unlock can run straight away.
       for (final action in details.lifecycleActions)
         TextButton(onPressed: () => details.onLifecycleAction!(action, null), child: Text(action.name)),
+      if (details.sentVerification case final sent?) Text('Link sent to \${sent.maskedDestination ?? 'the user'}'),
+      for (final name in details.verifiableAttributes)
+        Row(children: [
+          Text('\$name: \${details.verifiedAttributes?[name] != null ? 'verified' : 'not verified'}'),
+          if (details.sendableAttributes.contains(name))
+            TextButton(
+              onPressed: details.onSendVerification == null ? null : () => details.onSendVerification!(name),
+              child: const Text('Verify'),
+            ),
+        ]),
       if (details.onDelete != null) TextButton(onPressed: details.onDelete, child: const Text('Delete')),
     ]),
   ),
@@ -496,6 +508,38 @@ class _GroupForm extends StatelessWidget {
       );
 }
 
+/// The Base user details with sample data; a sent link shows its sample result.
+class _SampleUserDetails extends StatefulWidget {
+  final StoryContext s;
+
+  const _SampleUserDetails({required this.s});
+
+  @override
+  State<_SampleUserDetails> createState() => _SampleUserDetailsState();
+}
+
+class _SampleUserDetailsState extends State<_SampleUserDetails> {
+  UserAttributeVerificationResult? _sent;
+
+  @override
+  Widget build(BuildContext context) => BaseUserDetails(
+        user: _detailUser,
+        groups: _memberships,
+        userSchema: _detailUserSchema,
+        onDelete: () => widget.s.emit('onDelete'),
+        lifecycleActions: const [AccountLifecycleAction.unlock, AccountLifecycleAction.suspend],
+        onLifecycleAction: (action, note) => widget.s.emit('onLifecycleAction: ${action.name}'),
+        sentVerification: _sent,
+        onSendVerification: (attribute) {
+          setState(
+            () => _sent = const UserAttributeVerificationResult(channel: 'email', maskedDestination: 'a•••@example.com'),
+          );
+          widget.s.emit('onSendVerification: $attribute');
+        },
+        builder: (context, details) => _UserCard(details: details),
+      );
+}
+
 /// The user details state drawn as a Material card with chips.
 class _UserCard extends StatelessWidget {
   final UserDetailsState details;
@@ -523,6 +567,25 @@ class _UserCard extends StatelessWidget {
               ),
             ),
             for (final entry in details.attributes.entries) Text('${entry.key}: ${entry.value}'),
+            if (details.sentVerification case final sent?)
+              Text(
+                'Link sent to ${sent.maskedDestination ?? 'the user'}',
+                style: TextStyle(color: Theme.of(context).colorScheme.primary),
+              ),
+            for (final name in details.verifiableAttributes)
+              Row(
+                children: [
+                  Text('$name: ${details.verifiedAttributes?[name] != null ? 'verified' : 'not verified'}'),
+                  if (details.sendableAttributes.contains(name))
+                    TextButton(
+                      onPressed: switch (details.onSendVerification) {
+                        final send? => () => send(name),
+                        null => null,
+                      },
+                      child: Text('Verify', semanticsLabel: 'Verify $name'),
+                    ),
+                ],
+              ),
             const SizedBox(height: 8),
             Wrap(spacing: 6, children: [for (final group in details.groups) Chip(label: Text(group.name))]),
             if (details.lifecycleActions.isNotEmpty)

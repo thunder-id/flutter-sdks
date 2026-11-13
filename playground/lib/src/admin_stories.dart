@@ -129,6 +129,30 @@ final _sampleApplication = Application.fromJson({
 const _states = ['data', 'loading', 'empty', 'forbidden'];
 const _detailStates = ['data', 'loading', 'forbidden'];
 
+/// The sample user's type schema, which makes its email verifiable.
+const EntityTypeSchema _sampleUserSchema = {
+  'username': {'type': 'string'},
+  'email': {'type': 'email'},
+  'given_name': {'type': 'string'},
+  'family_name': {'type': 'string'},
+};
+
+/// The sample user's email verification record, and what a sent sample link reports.
+const _sampleVerifiedEmail = {'email': VerifiedAttribute(verifiedAt: '2026-11-03T10:00:00Z')};
+const _sampleSentVerification =
+    UserAttributeVerificationResult(channel: 'email', emailSent: true, maskedDestination: 'a•••@example.com');
+
+const _userDetailsBaseControls = [
+  ControlDef.choice('state', _detailStates),
+  ControlDef.choice('status', _accessStatuses),
+  ControlDef.toggle('deletable'),
+  ControlDef.toggle('editable'),
+  ControlDef.toggle('lifecycleActions'),
+  ControlDef.toggle('attributeVerification'),
+  ControlDef.toggle('emailVerified'),
+  ControlDef.toggle('linkSent'),
+];
+
 const _accessStatuses = [AccessStatusValue.active, AccessStatusValue.locked, AccessStatusValue.suspended];
 
 const _administrationModes = ['native', 'flow'];
@@ -354,6 +378,9 @@ final List<ComponentDef> adminComponentDefs = [
       'deletable': false,
       'editable': true,
       'lifecycleActions': true,
+      'attributeVerification': true,
+      'emailVerified': false,
+      'linkSent': false,
       'administrationMode': 'native',
       'status': AccessStatusValue.locked,
       'state': 'data',
@@ -363,24 +390,27 @@ final List<ComponentDef> adminComponentDefs = [
       ControlDef.toggle('deletable'),
       ControlDef.toggle('editable'),
       ControlDef.toggle('lifecycleActions'),
+      ControlDef.toggle('attributeVerification'),
       ControlDef.choice('administrationMode', _administrationModes),
     ],
     stories: const [
       StoryDef('connected', 'Connected'),
+      StoryDef('base', 'Base (sample data)', controls: _userDetailsBaseControls),
       StoryDef(
-        'base',
-        'Base (sample data)',
-        controls: [
-          ControlDef.choice('state', _detailStates),
-          ControlDef.choice('status', _accessStatuses),
-          ControlDef.toggle('deletable'),
-          ControlDef.toggle('editable'),
-          ControlDef.toggle('lifecycleActions'),
-        ],
+        'verificationSent',
+        'Verification link sent',
+        preset: {'attributeVerification': true, 'linkSent': true, 'emailVerified': false},
+        controls: _userDetailsBaseControls,
+      ),
+      StoryDef(
+        'emailVerified',
+        'Email verified',
+        preset: {'attributeVerification': true, 'linkSent': false, 'emailVerified': true},
+        controls: _userDetailsBaseControls,
       ),
     ],
     build: (context, s) {
-      if (s.story == 'base') {
+      if (s.story != 'connected') {
         final sample = _sampleUsers.first;
         final status = s.text('status');
         return BaseUserDetails(
@@ -392,15 +422,20 @@ final List<ComponentDef> adminComponentDefs = [
                   type: sample.type,
                   attributes: sample.attributes,
                   status: AccessStatus(value: status),
+                  verifiedAttributes: s.flag('emailVerified') ? _sampleVerifiedEmail : const {},
                 )
               : null,
           groups: _sampleMemberships,
+          userSchema: _sampleUserSchema,
           isLoading: s.text('state') == 'loading',
           error: _error(context, s, 'admin.users.details.error'),
           onDelete: s.flag('deletable') ? () => s.emit('onDelete') : null,
           onUpdate: s.flag('editable') ? _emitWith(s, 'onUpdate', (a) => '${a.length} attributes') : null,
           lifecycleActions: _sampleLifecycleActions(AccountLifecycleSubjectKind.user, status),
           onLifecycleAction: s.flag('lifecycleActions') ? _emitLifecycle(s) : null,
+          onSendVerification:
+              s.flag('attributeVerification') ? _emitWith(s, 'onSendVerification', (String a) => a) : null,
+          sentVerification: s.flag('linkSent') ? _sampleSentVerification : null,
           preferences: _prefs(s),
         );
       }
@@ -412,26 +447,32 @@ final List<ComponentDef> adminComponentDefs = [
         deletable: s.flag('deletable'),
         editable: s.flag('editable'),
         lifecycleActions: s.flag('lifecycleActions'),
+        attributeVerification: s.flag('attributeVerification'),
         administrationMode: _mode(s),
         onDeleted: () => s.emit('onDeleted'),
         preferences: _prefs(s),
       );
     },
-    code: (s) => s.story == 'base'
+    code: (s) => s.story != 'connected'
         ? _snippet('BaseUserDetails', [
             'user: user',
             'groups: groups',
+            'userSchema: userType.schema',
             _stateArgs(s, 'admin.users.details.error'),
             if (s.flag('deletable')) 'onDelete: () {}',
             if (s.flag('editable')) 'onUpdate: (attributes) {}',
             if (s.flag('lifecycleActions')) 'lifecycleActions: lifecycleActions',
             if (s.flag('lifecycleActions')) 'onLifecycleAction: (action, operatorNote) {}',
+            if (s.flag('attributeVerification'))
+              'onSendVerification: (attribute) => client.sendUserAttributeVerification(user.id, attribute)',
+            if (s.flag('attributeVerification') && s.flag('linkSent')) 'sentVerification: sentVerification',
           ])
         : _snippet('UserDetails', [
             'userId: ${lit(_id(s, 'userId', 'user').isEmpty ? 'user-id' : _id(s, 'userId', 'user'))}',
             if (s.flag('deletable')) 'deletable: true',
             if (s.flag('editable')) 'editable: true',
             if (s.flag('lifecycleActions')) 'lifecycleActions: true',
+            if (s.flag('attributeVerification')) 'attributeVerification: true',
             if (_mode(s) == AdministrationMode.flow) 'administrationMode: AdministrationMode.flow',
             'onDeleted: () {}',
           ]),

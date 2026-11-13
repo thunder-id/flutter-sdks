@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../i18n/thunderid_i18n.dart';
 import '../../models/attribute_verification.dart';
-import '../../models/user_profile.dart' as model;
+import '../internal/account_style.dart';
 
 /// The verification status of a stored profile value, as the server reports it.
 enum AttributeVerificationStatus { verified, unverified }
@@ -31,26 +31,6 @@ AttributeVerificationStatus? verificationStatusOf({
       : AttributeVerificationStatus.unverified;
 }
 
-/// Whether saving [name] opens its verification by itself: only for a changed `email` the saved
-/// profile stores and reports unverified. An absent `verifiedAttributes` leaves the status unknown,
-/// so nothing opens on that basis; a mobile number is verified on request only.
-bool shouldVerifyAfterSave({
-  required String name,
-  required Map<String, model.AttributeSchema> schema,
-  required Object? previousValue,
-  required model.UserProfile saved,
-}) {
-  final stored = saved.attributes[name];
-  final verified = saved.verifiedAttributes;
-  return AttributeVerification.opensAfterSave(schema[name]?.type) &&
-      AttributeVerification.isVerifiableAttribute(name, schema) &&
-      stored is String &&
-      stored.trim().isNotEmpty &&
-      stored != previousValue &&
-      verified != null &&
-      !verified.containsKey(name);
-}
-
 /// A Verified or Unverified status: an icon and a colored label.
 class VerificationStatusBadge extends StatelessWidget {
   final AttributeVerificationStatus status;
@@ -68,13 +48,32 @@ class VerificationStatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dark = MediaQuery.platformBrightnessOf(context) == Brightness.dark;
     final verified = status == AttributeVerificationStatus.verified;
-    final label = i18n.resolve(
-      verified
-          ? 'userProfile.verification.verified'
-          : 'userProfile.verification.unverified',
+    return VerificationStatusLabel(
+      verified: verified,
+      label: i18n.resolve(
+        verified ? 'userProfile.verification.verified' : 'userProfile.verification.unverified',
+      ),
+      identifier: identifier,
     );
+  }
+}
+
+class VerificationStatusLabel extends StatelessWidget {
+  final bool verified;
+  final String label;
+  final String? identifier;
+
+  const VerificationStatusLabel({
+    super.key,
+    required this.verified,
+    required this.label,
+    this.identifier,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = MediaQuery.platformBrightnessOf(context) == Brightness.dark;
     final color = verified
         ? (dark ? const Color(0xFF4ADE80) : const Color(0xFF166534))
         : (dark ? const Color(0xFFF5B544) : const Color(0xFFB45309));
@@ -98,6 +97,62 @@ class VerificationStatusBadge extends StatelessWidget {
       label: label,
       excludeSemantics: true,
       child: badge,
+    );
+  }
+}
+
+/// The full-width outlined action for a stored contact.
+class VerificationActionButton extends StatelessWidget {
+  final String label;
+  final String identifier;
+  final VoidCallback? onPressed;
+  final bool isLoading;
+
+  /// What assistive technology reads instead of [label], e.g. naming the attribute.
+  final String? semanticsLabel;
+
+  const VerificationActionButton({
+    super.key,
+    required this.label,
+    required this.identifier,
+    required this.onPressed,
+    this.isLoading = false,
+    this.semanticsLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = ThunderAccountColors.of(context);
+    return Semantics(
+      identifier: identifier,
+      child: SizedBox(
+        width: double.infinity,
+        height: 50,
+        child: OutlinedButton(
+          key: Key(identifier),
+          onPressed: isLoading ? null : onPressed,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: colors.text,
+            side: BorderSide(color: colors.text, width: 1.5),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+          child: isLoading
+              ? SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: colors.text,
+                    semanticsLabel: semanticsLabel ?? label,
+                  ),
+                )
+              : Text(
+                  label,
+                  semanticsLabel: semanticsLabel,
+                  style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600),
+                ),
+        ),
+      ),
     );
   }
 }
