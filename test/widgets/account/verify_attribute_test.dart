@@ -905,7 +905,7 @@ void main() {
       });
     }
 
-    testWidgets('saving a changed email in the editor opens its verification page',
+    testWidgets('saving a changed email leaves verification to the Verify action',
         (tester) async {
       h.onUpdateProfile = (call) {
         final attributes =
@@ -916,7 +916,6 @@ void main() {
           'verifiedAttributes': <String, Object?>{},
         };
       };
-      h.verifyResponses.add((_) => _codeStep());
       await showProfile(tester);
       await openEmailEditor(tester);
       await tester.enterText(
@@ -924,16 +923,9 @@ void main() {
         'new@example.com',
       );
       await tester.tap(find.byKey(const Key('thunderid-action-saveProfileField')));
-      await openVerificationPage(tester);
-      expect(
-        find.byKey(const Key('thunderid-action-saveProfileField')),
-        findsNothing,
-      );
-      expect(find.byKey(const Key('thunderid-field-otp')), findsOneWidget);
-      expect(
-        h.verifyCalls.single.arguments,
-        containsPair('attribute', 'email'),
-      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('thunderid-field-otp')), findsNothing);
+      expect(h.verifyCalls, isEmpty);
     });
 
     testWidgets('the editor hides status and Verify once the value changes',
@@ -1039,7 +1031,7 @@ void main() {
     });
 
     testWidgets(
-        'saving a changed email opens its verification; a changed mobile does not',
+        'saving either contact updates status and waits for Verify',
         (tester) async {
       late UserProfileState state;
       h.onUpdateProfile = (call) {
@@ -1068,11 +1060,20 @@ void main() {
       await state.save('mobile_number');
       await _settle(tester);
       expect(state.verifyingField, isNull);
+      expect(state.canVerify('mobile_number'), isTrue);
+      expect(h.verifyCalls, isEmpty);
 
       state.edit('email');
       state.setFieldValue('email', 'new@example.com');
       await state.save('email');
       await _settle(tester);
+      expect(state.verifyingField, isNull);
+      expect(state.verificationStatus('email'), AttributeVerificationStatus.unverified);
+      expect(state.canVerify('email'), isTrue);
+      expect(h.verifyCalls, isEmpty);
+
+      state.verify('email');
+      await tester.pump();
       expect(state.verifyingField, 'email');
 
       // Editing the value again closes its verification.

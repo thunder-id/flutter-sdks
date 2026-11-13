@@ -22,8 +22,11 @@ enum AdministrationMode {
 
 /// Keys of the `flow` server-config section that name the administration flow for each
 /// operation. An unset key is the opt-out: the operation calls the management API directly.
+/// [adminAttributeVerification] is the exception: it names an `ADMIN_INITIATED` flow that is started
+/// by handle, so an unset key means the operation is unavailable.
 abstract final class AdministrationFlowConfigKey {
   static const String actionDeletion = 'actionDeletionFlow';
+  static const String adminAttributeVerification = 'adminAttributeVerificationFlow';
   static const String agentSuspend = 'agentSuspendFlow';
   static const String agentUnlock = 'agentUnlockFlow';
   static const String agentUnsuspend = 'agentUnsuspendFlow';
@@ -44,6 +47,7 @@ abstract final class AdministrationFlowConfigKey {
   /// Every key, in the order above.
   static const List<String> values = [
     actionDeletion,
+    adminAttributeVerification,
     agentSuspend,
     agentUnlock,
     agentUnsuspend,
@@ -135,6 +139,21 @@ class AccountLifecycleResult {
   factory AccountLifecycleResult.fromFlowData(Map<String, String> data) => AccountLifecycleResult(
         emailSent: switch (data[AdministrationFlowData.emailSent]) { 'true' => true, 'false' => false, _ => null },
       );
+}
+
+/// What the administrator-initiated verification flow reports once it has sent the link, as
+/// `sendUserAttributeVerification` returns it. It never carries the link or the address.
+class UserAttributeVerificationResult {
+  /// The channel the link went out on, such as `email`.
+  final String channel;
+
+  /// Whether the flow's email step sent the link. `null` when the flow does not report it.
+  final bool? emailSent;
+
+  /// The masked address the link was sent to, such as `j***@example.com`.
+  final String? maskedDestination;
+
+  const UserAttributeVerificationResult({required this.channel, this.emailSent, this.maskedDestination});
 }
 
 /// An account lifecycle operation an operator can run. Locking is automatic only, so there is no

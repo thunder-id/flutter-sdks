@@ -267,9 +267,11 @@ class AdministrationFlowError extends IAMException {
   /// `executeAdministrationFlow-IncompleteError-001` (the flow asked for more input),
   /// `executeAdministrationFlow-FlowError-001` (the flow failed without a step code),
   /// `resolveAdministrationFlowId-NotFoundError-001` (the configured flow no longer exists),
-  /// `regenerateClientSecret-FlowError-001` (the regeneration flow returned no secret) and
+  /// `regenerateClientSecret-FlowError-001` (the regeneration flow returned no secret),
   /// `{operation}-NotConfiguredError-001` (a flow-only operation, such as `suspendUser`, has no
-  /// flow configured).
+  /// flow configured), and `sendUserAttributeVerification-FlowError-001` and
+  /// `sendUserAttributeVerification-UnexpectedStateError-001` (the verification flow failed
+  /// without a step code, or reported no sent link).
   final String flowCode;
 
   /// The error of the step that refused, when one did; empty otherwise.

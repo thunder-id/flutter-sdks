@@ -228,7 +228,7 @@ void main() {
       );
     });
 
-    test('only an email opens verification after a save', () {
+    test('the legacy verify-after-save list has only email', () {
       expect(AttributeVerification.opensAfterSave('email'), isTrue);
       expect(AttributeVerification.opensAfterSave('mobile'), isFalse);
     });
@@ -269,93 +269,6 @@ void main() {
       expect(status(type: 'string'), isNull);
       expect(status(value: ''), isNull);
       expect(status(value: ['a@example.com']), isNull);
-    });
-  });
-
-  group('shouldVerifyAfterSave', () {
-    const schema = {
-      'email': model.AttributeSchema(type: 'email'),
-      'mobile_number': model.AttributeSchema(type: 'mobile'),
-    };
-
-    model.UserProfile saved(
-      Map<String, dynamic> attributes,
-      Map<String, VerifiedAttribute>? verified,
-    ) =>
-        model.UserProfile(
-          id: 'u',
-          attributes: attributes,
-          verifiedAttributes: verified,
-        );
-
-    test('opens for a changed, unverified email', () {
-      expect(
-        shouldVerifyAfterSave(
-          name: 'email',
-          schema: schema,
-          previousValue: 'old@example.com',
-          saved: saved({'email': 'new@example.com'}, const {}),
-        ),
-        isTrue,
-      );
-    });
-
-    test(
-        'does not open for a mobile number, an unchanged value, a verified value or an unknown status',
-        () {
-      expect(
-        shouldVerifyAfterSave(
-          name: 'mobile_number',
-          schema: schema,
-          previousValue: '+1',
-          saved: saved({'mobile_number': '+2'}, const {}),
-        ),
-        isFalse,
-      );
-      expect(
-        shouldVerifyAfterSave(
-          name: 'email',
-          schema: schema,
-          previousValue: 'same@example.com',
-          saved: saved({'email': 'same@example.com'}, const {}),
-        ),
-        isFalse,
-      );
-      expect(
-        shouldVerifyAfterSave(
-          name: 'email',
-          schema: schema,
-          previousValue: 'old@example.com',
-          saved: saved(
-            {'email': 'new@example.com'},
-            const {'email': VerifiedAttribute()},
-          ),
-        ),
-        isFalse,
-      );
-      expect(
-        shouldVerifyAfterSave(
-          name: 'email',
-          schema: schema,
-          previousValue: 'old@example.com',
-          saved: saved({'email': 'new@example.com'}, null),
-        ),
-        isFalse,
-      );
-    });
-  });
-
-  group('splitHeadings', () {
-    test('takes the first two top-level headings and leaves the rest', () {
-      final result = splitHeadings([
-        {'type': 'TEXT', 'variant': 'HEADING_1', 'label': 'Title'},
-        {'type': 'TEXT', 'variant': 'HEADING_6', 'label': 'Subtitle'},
-        {'type': 'BLOCK', 'components': <Object?>[]},
-        {'type': 'TEXT', 'variant': 'HEADING_2', 'label': 'Third'},
-      ]);
-      expect(result.title, 'Title');
-      expect(result.subtitle, 'Subtitle');
-      expect(result.rest.map((c) => c['type']), ['BLOCK', 'TEXT']);
     });
   });
 }

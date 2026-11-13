@@ -648,7 +648,7 @@ class _ProfileFieldEditPageState extends State<_ProfileFieldEditPage> {
       ),
       if (offersVerify) ...[
         const SizedBox(height: 20),
-        _VerifyButton(
+        VerificationActionButton(
           label: widget.i18n.resolve('userProfile.verification.verify'),
           identifier: 'thunderid-verify-${field.name}',
           onPressed: () {
@@ -781,44 +781,6 @@ class _VerifyAttributePage extends StatelessWidget {
                 onCancel: close,
               ),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Full-width outlined Verify on the edit page, neutral so Save stays its one filled action.
-class _VerifyButton extends StatelessWidget {
-  final String label;
-  final String identifier;
-  final VoidCallback onPressed;
-
-  const _VerifyButton({
-    required this.label,
-    required this.identifier,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = ThunderAccountColors.of(context);
-    return Semantics(
-      identifier: identifier,
-      child: SizedBox(
-        width: double.infinity,
-        height: 50,
-        child: OutlinedButton(
-          key: Key(identifier),
-          onPressed: onPressed,
-          style: OutlinedButton.styleFrom(
-            foregroundColor: colors.text,
-            side: BorderSide(color: colors.text, width: 1.5),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-          child: Text(
-            label,
-            style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600),
           ),
         ),
       ),
@@ -963,19 +925,11 @@ class _BaseUserProfileState extends State<BaseUserProfile> {
       );
       final updated = await client.updateUserProfile(payload);
       if (!mounted) return;
-      final opensVerification = shouldVerifyAfterSave(
-        name: name,
-        schema: _schema,
-        previousValue: field.rawValue,
-        saved: updated,
-      );
       _applyProfile(updated);
       setState(() {
         _editingFields.remove(name);
         _editedValues.remove(name);
-        if (opensVerification) {
-          _verifyingField = name;
-        } else if (_verifyingField == name) {
+        if (_verifyingField == name) {
           _verifyingField = null;
         }
       });

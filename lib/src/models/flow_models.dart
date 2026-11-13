@@ -11,7 +11,11 @@ enum FlowType {
 
   /// An operation the signed-in user runs on their own account, such as verifying an attribute.
   /// The flow is named by its handle, and the server takes the user from the access token.
-  self;
+  self,
+
+  /// An operation an administrator starts for a user, such as sending them an email verification
+  /// link. The administrator's token starts it; the user continues it from the link, with no token.
+  adminInitiated;
 
   String get value {
     switch (this) {
@@ -25,6 +29,8 @@ enum FlowType {
         return 'INVITED_USER_REGISTRATION';
       case FlowType.self:
         return 'SELF';
+      case FlowType.adminInitiated:
+        return 'ADMIN_INITIATED';
     }
   }
 }

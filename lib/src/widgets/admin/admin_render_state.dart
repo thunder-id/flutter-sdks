@@ -3,6 +3,7 @@
 
 import 'package:flutter/widgets.dart';
 
+import '../../models/attribute_verification.dart';
 import '../../models/management/administration.dart';
 import '../../models/management/agent.dart';
 import '../../models/management/application.dart';
@@ -399,6 +400,26 @@ class UserDetailsState {
   final AccountLifecycleCallback? onLifecycleAction;
   final bool isRunningLifecycleAction;
 
+  /// The visible contact attributes whose verification status is known: those with a record, or
+  /// typed email or mobile in the user's type ([AttributeVerification.verifiableAttributeTypes]),
+  /// sorted. Empty when the server does not report verification.
+  final List<String> verifiableAttributes;
+
+  /// The user's verified attributes, keyed by attribute. `null` when the server does not report
+  /// them.
+  final Map<String, VerifiedAttribute>? verifiedAttributes;
+
+  /// The unverified email attributes a verification link can be sent for.
+  final Set<String> sendableAttributes;
+
+  /// Sends the user a link to verify one of [sendableAttributes]; other names are ignored. `null`
+  /// when sending is not allowed, including for read-only users and while saving or sending.
+  final ValueChanged<String>? onSendVerification;
+  final bool isSendingVerification;
+
+  /// What the last sent verification link reported, such as its masked destination.
+  final UserAttributeVerificationResult? sentVerification;
+
   const UserDetailsState({
     required this.user,
     required this.displayName,
@@ -413,6 +434,12 @@ class UserDetailsState {
     this.lifecycleActions = const [],
     this.onLifecycleAction,
     this.isRunningLifecycleAction = false,
+    this.verifiableAttributes = const [],
+    this.verifiedAttributes,
+    this.sendableAttributes = const {},
+    this.onSendVerification,
+    this.isSendingVerification = false,
+    this.sentVerification,
   });
 }
 

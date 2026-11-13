@@ -8,6 +8,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../management/management_display.dart';
 import '../../models/management/administration.dart';
+import '../../models/management/entity_type.dart';
 import '../../models/management/group.dart';
 import '../../models/management/managed_user.dart';
 import '../../models/management/management_page.dart';
@@ -20,6 +21,7 @@ import 'internal/admin_connected.dart';
 import 'internal/admin_context.dart';
 import 'internal/admin_inputs.dart';
 import 'internal/admin_parts.dart';
+import 'internal/user_attribute_verification_parts.dart';
 
 String _stringify(Object? value) {
   if (value == null) return '';
@@ -32,10 +34,17 @@ String _stringify(Object? value) {
 /// Delete and edit appear only when [onDelete] / [onUpdate] are set, and never for a read-only
 /// user. Delete asks for confirmation first (spec "UI", requirement 6). The account lifecycle
 /// actions in [lifecycleActions] appear only when [onLifecycleAction] is set; they change only
-/// runtime state, so they apply to read-only users too.
+/// runtime state, so they apply to read-only users too. When the server reports the user's
+/// verified attributes, each contact attribute with a record, or typed email or mobile in
+/// [userSchema], shows Verified or Not verified. With [onSendVerification], an unverified
+/// email-typed attribute of a user that is not read-only offers a verification link.
 class BaseUserDetails extends StatefulWidget {
   final ManagedUser? user;
   final List<MembershipGroup> groups;
+
+  /// The schema of the user's type. Without it, only attributes the server already reports a
+  /// verification record for show a status, and no link can be sent.
+  final EntityTypeSchema? userSchema;
   final bool isLoading;
 
   /// An already-translated error message. Never pass the server's text here.
@@ -58,16 +67,25 @@ class BaseUserDetails extends StatefulWidget {
   /// and a suspension takes an optional operator note.
   final AccountLifecycleCallback? onLifecycleAction;
   final bool isRunningLifecycleAction;
+
+  /// Sends the user a link to verify the given attribute.
+  final ValueChanged<String>? onSendVerification;
+  final bool isSendingVerification;
+
+  /// What the last sent verification link reported. Its masked destination is shown in a success
+  /// message.
+  final UserAttributeVerificationResult? sentVerification;
   final List<Widget> actions;
   final ThunderIDPreferences? preferences;
 
-  /// Builds custom UI in place of the default view, from the user, their visible attributes and groups, the loading and error state, and the delete, update and lifecycle callbacks.
+  /// Builds custom UI in place of the default view, from the user, their visible attributes and groups, their verification status, the loading and error state, and the allowed actions.
   final AdminWidgetBuilder<UserDetailsState>? builder;
 
   const BaseUserDetails({
     super.key,
     this.user,
     this.groups = const [],
+    this.userSchema,
     this.isLoading = false,
     this.error,
     this.hiddenAttributes = const {'password'},
@@ -78,6 +96,9 @@ class BaseUserDetails extends StatefulWidget {
     this.lifecycleActions = const [],
     this.onLifecycleAction,
     this.isRunningLifecycleAction = false,
+    this.onSendVerification,
+    this.isSendingVerification = false,
+    this.sentVerification,
     this.actions = const [],
     this.preferences,
     this.builder,
@@ -89,12 +110,32 @@ class BaseUserDetails extends StatefulWidget {
 
 class _BaseUserDetailsState extends State<BaseUserDetails> {
   Map<String, String>? _draft;
+  String? _sendingAttribute;
+
+  /// Sends a link for one of [sendable]; `null` while saving or sending.
+  ValueChanged<String>? _sendAction(Set<String> sendable) {
+    final onSend = widget.onSendVerification;
+    if (sendable.isEmpty || widget.isUpdating || widget.isSendingVerification || onSend == null) return null;
+    return (name) {
+      if (!sendable.contains(name)) return;
+      setState(() => _sendingAttribute = name);
+      onSend(name);
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
     final ac = AdminContext.of(context, widget.preferences);
     final user = widget.user;
     final builder = widget.builder;
+    final verifiable = adminVerifiableAttributes(user, widget.userSchema, widget.hiddenAttributes);
+    final sendable = adminSendableAttributes(
+      user,
+      widget.userSchema,
+      verifiable,
+      canSend: widget.onSendVerification != null,
+    );
+    final sendAction = _sendAction(sendable);
     if (builder != null) {
       final isWritable = user != null && !user.isReadOnly;
       return builder(
@@ -118,6 +159,12 @@ class _BaseUserDetailsState extends State<BaseUserDetails> {
           lifecycleActions: widget.onLifecycleAction != null && user != null ? widget.lifecycleActions : const [],
           onLifecycleAction: user != null ? widget.onLifecycleAction : null,
           isRunningLifecycleAction: widget.isRunningLifecycleAction,
+          verifiableAttributes: verifiable,
+          verifiedAttributes: user?.verifiedAttributes,
+          sendableAttributes: sendable,
+          onSendVerification: sendAction,
+          isSendingVerification: widget.isSendingVerification,
+          sentVerification: widget.sentVerification,
         ),
       );
     }
@@ -148,6 +195,7 @@ class _BaseUserDetailsState extends State<BaseUserDetails> {
     final draft = _draft;
     final onLifecycleAction = widget.onLifecycleAction;
     final status = user.status?.value;
+    final sent = widget.sentVerification;
 
     return AdminSection(
       ac: ac,
@@ -177,7 +225,16 @@ class _BaseUserDetailsState extends State<BaseUserDetails> {
           ),
       ],
       children: [
-        if (widget.error != null) AdminAlert(ac: ac, message: widget.error!, block: 'user-details'),
+        if (widget.error != null)
+          AdminAlert(ac: ac, message: widget.error!, block: 'user-details')
+        else if (sent != null && sent.emailSent == false)
+          AdminAlert(ac: ac, message: ac.t('admin.users.details.verification.error'), block: 'user-details')
+        else if (sent != null)
+          AdminNotice(
+            ac: ac,
+            message: verificationSentMessage(ac, sent),
+            identifier: 'thunderid-admin-user-details-verification-sent',
+          ),
         Row(
           children: [
             AdminAvatar(name: displayName, size: 48),
@@ -245,9 +302,25 @@ class _BaseUserDetailsState extends State<BaseUserDetails> {
                 )
               : attributes.isEmpty
                   ? AdminMuted(ac: ac, text: ac.t('admin.users.details.no_attributes'))
-                  : AdminDetailList(
-                      ac: ac,
-                      items: [for (final entry in attributes) (entry.key, Text(_stringify(entry.value)))],
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (final entry in attributes)
+                          if (verifiable.contains(entry.key))
+                            AdminAttributeVerificationRow(
+                              ac: ac,
+                              block: 'user-details',
+                              name: entry.key,
+                              value: _stringify(entry.value),
+                              isVerified: user.verifiedAttributes?[entry.key] != null,
+                              isSending: widget.isSendingVerification && _sendingAttribute == entry.key,
+                              isUpdating: widget.isUpdating || widget.isSendingVerification,
+                              onSend: sendable.contains(entry.key) ? () => sendAction?.call(entry.key) : null,
+                            )
+                          else
+                            AdminDetailList(ac: ac, items: [(entry.key, Text(_stringify(entry.value)))]),
+                      ],
                     ),
         ),
         AdminPanel(
@@ -268,8 +341,8 @@ class _BaseUserDetailsState extends State<BaseUserDetails> {
 /// User details that loads the user and their groups through the management API.
 ///
 /// Changing data is off by default: set [deletable] to offer delete (with confirmation),
-/// [editable] to offer editing the user's string attributes, and [lifecycleActions] to offer
-/// suspend, unsuspend and unlock.
+/// [editable] to offer editing the user's string attributes, [lifecycleActions] to offer
+/// suspend, unsuspend and unlock, and [attributeVerification] to offer sending a verification link.
 class UserDetails extends StatefulWidget {
   final String userId;
   final bool deletable;
@@ -280,6 +353,14 @@ class UserDetails extends StatefulWidget {
   /// the server configures that flow. The configured flows are read only while this is on, and
   /// reading them needs a token that may read the server configuration.
   final bool lifecycleActions;
+
+  /// Whether a verification link can be sent to the user's unverified email from this view. It
+  /// runs the server's administrator-initiated verification flow, the user finishes from the
+  /// link, and the user is read again afterwards. It is offered only when the server configures
+  /// that flow (`adminAttributeVerificationFlow`), for an unverified attribute typed email in the
+  /// user's type. The handle and the user type are read only while this is on; reading the handle
+  /// needs a token that may read the server configuration.
+  final bool attributeVerification;
 
   /// How the delete runs. [AdministrationMode.flow] runs the user deletion flow the server
   /// configures, which revokes the user's grants and ends their sessions before the record goes.
@@ -298,6 +379,7 @@ class UserDetails extends StatefulWidget {
     this.deletable = false,
     this.editable = false,
     this.lifecycleActions = false,
+    this.attributeVerification = false,
     this.administrationMode = AdministrationMode.native,
     this.onDeleted,
     this.hiddenAttributes = const {'password'},
@@ -316,10 +398,16 @@ class _UserDetailsState extends AdminConnectedState<UserDetails> {
   ResourceMutation<String, void>? _delete;
   ResourceMutation<UpdateUserVariables, ManagedUser>? _update;
   AdminLifecycleBinding? _lifecycle;
+  ResourceMutation<SendUserAttributeVerificationVariables, UserAttributeVerificationResult>? _verification;
+  ResourceQuery<Map<String, String>>? _verificationHandle;
+  ResourceQuery<ManagedUserTypeDetails?>? _userType;
+  String? _userTypeHandle;
 
   @override
   void bind(ManagementResources resources) {
-    _user = own(resources.userQuery(widget.userId));
+    _userType = null;
+    _userTypeHandle = null;
+    _user = own(resources.userQuery(widget.userId))..addListener(_syncUserType);
     _groups = own(resources.userGroupsQuery(widget.userId, limit: 100));
     _delete = own(
       resources.deleteUserMutation(
@@ -328,6 +416,10 @@ class _UserDetailsState extends AdminConnectedState<UserDetails> {
       ),
     );
     _update = own(resources.updateUserMutation());
+    _verification = own(resources.sendUserAttributeVerificationMutation());
+    _verificationHandle = own(
+      resources.adminAttributeVerificationHandleQuery(enabled: widget.attributeVerification),
+    );
     _lifecycle = AdminLifecycleBinding(
       resources,
       AccountLifecycleSubjectKind.user,
@@ -336,11 +428,22 @@ class _UserDetailsState extends AdminConnectedState<UserDetails> {
     );
   }
 
+  /// Reads the user's type by handle when it changes, while verification is on.
+  void _syncUserType() {
+    final resources = this.resources;
+    final handle = verificationUserTypeHandle(_user?.data, attributeVerification: widget.attributeVerification);
+    if (resources == null || handle == _userTypeHandle) return;
+    release(_userType);
+    _userTypeHandle = handle;
+    _userType = handle == null ? null : own(resources.userTypeByHandleQuery(handle));
+  }
+
   @override
   void didUpdateWidget(UserDetails oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.userId != widget.userId ||
         oldWidget.lifecycleActions != widget.lifecycleActions ||
+        oldWidget.attributeVerification != widget.attributeVerification ||
         oldWidget.administrationMode != widget.administrationMode) {
       rebind();
     }
@@ -353,32 +456,59 @@ class _UserDetailsState extends AdminConnectedState<UserDetails> {
     final delete = _delete;
     final update = _update;
     final lifecycle = _lifecycle;
+    final verification = _verification;
+    final verificationHandle = adminVerificationFlowHandle(
+      enabled: widget.attributeVerification,
+      configuredFlows: _verificationHandle?.data,
+    );
+    final userType = _userType?.data;
+    final isUpdating = (update?.isLoading ?? false) || (_user?.isLoading ?? false);
     return BaseUserDetails(
       user: user,
       groups: _groups?.data?.items ?? const [],
+      userSchema: userType != null && userType.handle == user?.type ? userType.schema : null,
       isLoading: _user?.isLoading ?? !providerFailed,
       error: providerFailed
           ? ac.t('admin.users.details.error')
           : toManagementErrorMessage(ac.t, _user?.error, 'admin.users.details.error') ??
               toManagementErrorMessage(ac.t, delete?.error, 'admin.users.details.delete.error') ??
               toManagementErrorMessage(ac.t, update?.error, 'admin.users.details.edit.error') ??
-              lifecycle?.error(ac),
+              toManagementErrorMessage(ac.t, verification?.error, 'admin.users.details.verification.error') ??
+              lifecycle?.error(ac) ??
+              toManagementErrorMessage(
+                ac.t,
+                _verificationHandle?.error ?? _userType?.error,
+                'admin.users.details.verification.load_error',
+              ),
       isDeleting: delete?.isLoading ?? false,
       onDelete: widget.deletable && delete != null ? () => unawaited(delete.mutate(widget.userId)) : null,
-      isUpdating: update?.isLoading ?? false,
+      isUpdating: isUpdating,
       onUpdate: widget.editable && update != null && user != null
-          ? (attributes) => unawaited(
+          ? (attributes) {
+              if (update.isLoading || (verification?.isLoading ?? false)) return;
+              verification?.reset();
+              unawaited(
                 update.mutate(
                   (
                     userId: widget.userId,
                     data: UpdateManagedUserRequest(attributes: attributes, ouId: user.ouId, type: user.type),
                   ),
                 ),
-              )
+              );
+            }
           : null,
       lifecycleActions: lifecycle?.actions(user?.status?.value) ?? const [],
       onLifecycleAction: lifecycle?.handler(widget.userId),
       isRunningLifecycleAction: lifecycle?.isRunning ?? false,
+      isSendingVerification: verification?.isLoading ?? false,
+      sentVerification: verification?.data,
+      onSendVerification: verification != null && verificationHandle != null
+          ? (attribute) {
+              if (isUpdating || verification.isLoading) return;
+              verification.reset();
+              unawaited(verification.mutate((userId: widget.userId, attribute: attribute, handle: verificationHandle)));
+            }
+          : null,
       hiddenAttributes: widget.hiddenAttributes,
       actions: widget.actions,
       preferences: widget.preferences,

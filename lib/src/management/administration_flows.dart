@@ -195,19 +195,6 @@ extension AdministrationFlowOperations on ThunderIDManagementClient {
     return flowId == null ? null : executeAdministrationFlow(flowId, inputs, action: action, fetcher: fetcher);
   }
 
-  /// A server-level URL under [ThunderIDManagementClient.baseUrl], never a collection override.
-  Uri _serverUrl(String operation, String path, {String? id, Map<String, Object?> query = const {}}) {
-    if (baseUrl.trim().isEmpty) {
-      throw IAMException(
-        ThunderIDErrorCode.invalidConfiguration,
-        '$operation: a baseUrl is required to run an administration flow; a collection URL is not enough.',
-      );
-    }
-    return buildManagementUrl(
-      operation,
-      '${baseUrl.replaceFirst(RegExp(r'/+$'), '')}/$path',
-      id: id,
-      query: query,
-    );
-  }
+  Uri _serverUrl(String operation, String path, {String? id, Map<String, Object?> query = const {}}) =>
+      buildServerUrl(operation, baseUrl, path, id: id, query: query);
 }
