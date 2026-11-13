@@ -7,10 +7,12 @@ import '../management/connections.dart';
 import '../management/flows.dart';
 import '../management/management_transport.dart';
 import '../management/thunderid_management_client.dart';
+import '../management/user_attribute_verification.dart';
 import '../models/management/administration.dart';
 import '../models/management/agent.dart';
 import '../models/management/application.dart';
 import '../models/management/connection.dart';
+import '../models/management/entity_type.dart';
 import '../models/management/flow_definition.dart';
 import '../models/management/flow_variable.dart';
 import '../models/management/group.dart';
@@ -45,6 +47,10 @@ abstract final class ManagementQueryKeys {
 
 /// Variables of [ManagementResources.updateUserMutation].
 typedef UpdateUserVariables = ({String userId, UpdateManagedUserRequest data});
+
+/// Variables of [ManagementResources.sendUserAttributeVerificationMutation]: the user, the
+/// attribute to verify and the flow handle, which is read from the server configuration when null.
+typedef SendUserAttributeVerificationVariables = ({String userId, String attribute, String? handle});
 
 /// Variables of [ManagementResources.updateGroupMutation].
 typedef UpdateGroupVariables = ({String groupId, UpdateGroupRequest data});
@@ -150,6 +156,29 @@ class ManagementResources {
         enabled,
       );
 
+  /// The user type named [handle], with its schema, or `null` when no user type has that handle.
+  /// It pages through the user types to find the handle, then reads that type.
+  ResourceQuery<ManagedUserTypeDetails?> userTypeByHandleQuery(
+    String? handle, {
+    bool enabled = true,
+    ManagementFetcher? fetcher,
+  }) =>
+      _query(
+        [ManagementQueryKeys.userTypes, 'handle', handle],
+        () async {
+          var offset = 0;
+          while (true) {
+            final page = await client.getUserTypes(limit: 100, offset: offset, fetcher: fetcher);
+            for (final type in page.items) {
+              if (type.handle == handle) return client.getUserType(type.id, fetcher: fetcher);
+            }
+            offset += page.items.length;
+            if (page.items.isEmpty || offset >= page.totalResults) return null;
+          }
+        },
+        enabled && handle != null,
+      );
+
   ResourceMutation<CreateManagedUserRequest, ManagedUser> createUserMutation({
     void Function(ManagedUser data, CreateManagedUserRequest variables)? onSuccess,
     void Function(Object error, CreateManagedUserRequest variables)? onError,
@@ -178,6 +207,25 @@ class ManagementResources {
         onSuccess,
         onError,
       );
+
+  /// Sends a user a link to verify an attribute, through the administrator-initiated verification
+  /// flow named by the variables' handle (see
+  /// [UserAttributeVerificationOperations.sendUserAttributeVerification]), then reloads the user.
+  ResourceMutation<SendUserAttributeVerificationVariables, UserAttributeVerificationResult>
+      sendUserAttributeVerificationMutation({
+    void Function(UserAttributeVerificationResult data, SendUserAttributeVerificationVariables variables)? onSuccess,
+    void Function(Object error, SendUserAttributeVerificationVariables variables)? onError,
+    ManagementFetcher? fetcher,
+  }) =>
+          _mutation(
+            (SendUserAttributeVerificationVariables v) =>
+                client.sendUserAttributeVerification(v.userId, v.attribute, handle: v.handle, fetcher: fetcher),
+            (SendUserAttributeVerificationVariables v) => [
+              [ManagementQueryKeys.user, v.userId],
+            ],
+            onSuccess,
+            onError,
+          );
 
   /// Deletes a user. [administrationMode] picks how (see [ThunderIDManagementClient.deleteUser]).
   ResourceMutation<String, void> deleteUserMutation({
@@ -737,6 +785,22 @@ class ManagementResources {
       _query(
         [ManagementQueryKeys.administrationFlows, 'account-lifecycle', kind.name],
         () => client.resolveAdministrationFlows(kind.flowConfigKeys.values.toList(), fetcher: fetcher),
+        enabled,
+      );
+
+  /// The handle of the administrator-initiated attribute verification flow, keyed by
+  /// [AdministrationFlowConfigKey.adminAttributeVerification]; the map is empty when none is
+  /// configured. Reading it needs a token that may read the server configuration.
+  ResourceQuery<Map<String, String>> adminAttributeVerificationHandleQuery({
+    bool enabled = true,
+    ManagementFetcher? fetcher,
+  }) =>
+      _query(
+        [ManagementQueryKeys.administrationFlows, 'attribute-verification'],
+        () => client.resolveAdministrationFlowHandles(
+          const [AdministrationFlowConfigKey.adminAttributeVerification],
+          fetcher: fetcher,
+        ),
         enabled,
       );
 

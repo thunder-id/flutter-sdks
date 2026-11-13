@@ -228,7 +228,7 @@ void main() {
       );
     });
 
-    test('only an email opens verification after a save', () {
+    test('the legacy verify-after-save list has only email', () {
       expect(AttributeVerification.opensAfterSave('email'), isTrue);
       expect(AttributeVerification.opensAfterSave('mobile'), isFalse);
     });
