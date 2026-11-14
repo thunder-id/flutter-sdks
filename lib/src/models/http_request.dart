@@ -5,7 +5,9 @@ import 'dart:convert';
 
 /// A request sent through [ThunderIDClient.httpRequest].
 class HttpRequestConfig {
-  /// The API URL: absolute, or a path starting with `/` relative to [ThunderIDConfig.baseUrl].
+  /// The API URL: a path starting with `/`, which goes under the backend's proxy
+  /// (`endpoints.backend.proxy`), or an absolute URL already under the proxy or under a bypass
+  /// URL.
   final String url;
 
   final String method;

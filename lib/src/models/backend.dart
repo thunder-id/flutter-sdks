@@ -7,18 +7,20 @@
 /// platform's secure store, and its API calls go through the backend, which attaches the access
 /// token.
 ///
-/// Every endpoint is a path under [baseUrl]. Any endpoint left unset defaults to a fixed path
-/// under `/api/auth`.
+/// With a backend, [ThunderIDConfig.baseUrl] is the backend's base URL, and it must use HTTPS. An
+/// endpoint given as a path (starting with `/`) resolves against it; one given as an absolute
+/// HTTPS URL is used as it is. Any endpoint left unset defaults to a fixed path under `/api/auth`.
+/// The app reaches its API only through [proxy]: the backend decides where those requests go.
 ///
 /// ```dart
-/// endpoints: EndpointsConfig(
-///   backend: BackendEndpoints(baseUrl: 'https://app.example.com'),
-/// ),
+/// ThunderIDConfig(
+///   baseUrl: 'https://app.example.com', // the backend
+///   endpoints: EndpointsConfig(
+///     backend: BackendEndpoints(proxy: '/api'),
+///   ),
+/// )
 /// ```
 class BackendEndpoints {
-  /// Base URL of the backend. Required, and must use HTTPS: every backend call goes to it.
-  final String baseUrl;
-
   /// Starts sign-in. Defaults to `/api/auth/signin`.
   final String? signIn;
 
@@ -36,8 +38,9 @@ class BackendEndpoints {
   /// Ends the session. Defaults to `/api/auth/signout`.
   final String? signOut;
 
-  /// Prefix of the API proxy. Requests under [ThunderIDConfig.baseUrl] are sent through it.
-  /// Defaults to `/api/auth/proxy`.
+  /// Prefix of the API proxy, the app's API base: the SDK sends the app's API requests, and its own
+  /// management requests, there, and the backend forwards them with the access token. Defaults
+  /// to `/api/auth/proxy`.
   final String? proxy;
 
   /// Issues the access token for [bypass], as an OAuth token response without a refresh token.
@@ -48,7 +51,6 @@ class BackendEndpoints {
   final BackendBypass? bypass;
 
   const BackendEndpoints({
-    required this.baseUrl,
     this.signIn,
     this.session,
     this.checkSession,
@@ -89,20 +91,27 @@ class BackendSession {
   /// When the access token expires, in seconds since the epoch.
   final int? expiresAt;
 
-  const BackendSession({required this.isSignedIn, this.user, this.expiresAt});
+  /// The scopes the access token was granted, space separated, as the token response's `scope`
+  /// (RFC 6749 §5.1). The app reads its permissions from here, so the token can stay on the backend.
+  final String? scope;
+
+  const BackendSession({required this.isSignedIn, this.user, this.expiresAt, this.scope});
 
   const BackendSession.signedOut()
       : isSignedIn = false,
         user = null,
-        expiresAt = null;
+        expiresAt = null,
+        scope = null;
 
   factory BackendSession.fromMap(Map<String, dynamic> map) {
     final Object? user = map['user'];
     final Object? expiresAt = map['expiresAt'];
+    final Object? scope = map['scope'];
     return BackendSession(
       isSignedIn: map['isSignedIn'] == true,
       user: user is Map ? user.cast<String, dynamic>() : null,
       expiresAt: expiresAt is num ? expiresAt.toInt() : null,
+      scope: scope is String ? scope : null,
     );
   }
 }

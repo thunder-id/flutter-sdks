@@ -78,8 +78,8 @@ class PlaygroundConfig {
   /// fall back to the signed-in user's `ouId` claim.
   final String? ouId;
 
-  /// Base URL of an app backend that runs sign-in (`endpoints.backend`). When set, the SDK signs
-  /// in through it and [baseUrl] is the API base its proxy fronts.
+  /// Base URL of an app backend that runs sign-in (`endpoints.backend`). When set, it becomes the
+  /// SDK's `baseUrl`, and the backend's proxy fronts the ThunderID server at [baseUrl].
   final String? backendUrl;
 
   const PlaygroundConfig({
@@ -131,7 +131,7 @@ class PlaygroundConfig {
   }
 
   ThunderIDConfig toSdkConfig() => ThunderIDConfig(
-        baseUrl: baseUrl,
+        baseUrl: backendUrl ?? baseUrl,
         clientId: clientId,
         applicationId: applicationId,
         afterSignInUrl: afterSignInUrl,
@@ -150,7 +150,7 @@ class PlaygroundConfig {
           agents: endpoints[ManagementEndpointKeys.agents],
           agentTypes: endpoints[ManagementEndpointKeys.agentTypes],
           applications: endpoints[ManagementEndpointKeys.applications],
-          backend: backendUrl == null ? null : BackendEndpoints(baseUrl: backendUrl!),
+          backend: backendUrl == null ? null : const BackendEndpoints(),
         ),
         preferences: const ThunderIDPreferences(
           theme: ThemePreferences(mode: 'dark'),
