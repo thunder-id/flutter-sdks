@@ -6,11 +6,17 @@ import 'json_reader.dart';
 
 /// An agent record administered through the management API.
 ///
-/// A record read from a list carries only the basic fields (id, name, type, OU, client id,
-/// description); read it by id for the rest.
+/// A record read from a list carries only the basic fields (id, type, OU, client id, description,
+/// attributes, display); read it by id for the rest.
+///
+/// An agent has no top-level name. Its name is the `name` attribute, which the agent type's schema
+/// defines; `resolveAgentName` picks the label to show.
 class Agent {
   final String id;
-  final String name;
+
+  /// A label the server resolved from the agent type's display attribute, when requested with
+  /// `include=display`.
+  final String? display;
   final String ouId;
 
   /// The agent type handle.
@@ -36,7 +42,7 @@ class Agent {
 
   const Agent({
     required this.id,
-    required this.name,
+    this.display,
     required this.ouId,
     required this.type,
     this.ouHandle,
@@ -57,7 +63,7 @@ class Agent {
 
   factory Agent.fromJson(Map<String, dynamic> json) => Agent(
         id: readString(json, 'id'),
-        name: readString(json, 'name'),
+        display: readOptionalString(json, 'display'),
         ouId: readString(json, 'ouId'),
         type: readString(json, 'type'),
         ouHandle: readOptionalString(json, 'ouHandle'),
@@ -105,9 +111,8 @@ class AgentType {
       );
 }
 
-/// Payload for registering an [Agent].
+/// Payload for registering an [Agent]. The agent's name goes in [attributes] as `name`.
 class CreateAgentRequest {
-  final String name;
   final String ouId;
   final String type;
   final String? description;
@@ -117,7 +122,6 @@ class CreateAgentRequest {
   final List<Map<String, dynamic>>? inboundAuthConfig;
 
   const CreateAgentRequest({
-    required this.name,
     required this.ouId,
     required this.type,
     this.description,
@@ -128,7 +132,6 @@ class CreateAgentRequest {
   });
 
   Map<String, dynamic> toJson() => {
-        'name': name,
         'ouId': ouId,
         'type': type,
         if (description != null) 'description': description,
@@ -139,9 +142,9 @@ class CreateAgentRequest {
       };
 }
 
-/// Payload for updating an [Agent]. Only the fields that are set are sent.
+/// Payload for updating an [Agent]. Only the fields that are set are sent. The agent's name goes
+/// in [attributes] as `name`.
 class UpdateAgentRequest {
-  final String? name;
   final String? ouId;
   final String? type;
   final String? description;
@@ -160,7 +163,6 @@ class UpdateAgentRequest {
   final bool? delegated;
 
   const UpdateAgentRequest({
-    this.name,
     this.ouId,
     this.type,
     this.description,
@@ -177,7 +179,6 @@ class UpdateAgentRequest {
   });
 
   Map<String, dynamic> toJson() => {
-        if (name != null) 'name': name,
         if (ouId != null) 'ouId': ouId,
         if (type != null) 'type': type,
         if (description != null) 'description': description,
