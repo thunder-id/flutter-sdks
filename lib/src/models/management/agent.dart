@@ -4,6 +4,60 @@
 import 'access_status.dart';
 import 'json_reader.dart';
 
+/// What an [AgentOwner.id] holds.
+enum AgentOwnerIdType {
+  uuid('uuid'),
+  email('email'),
+  mobile('mobile');
+
+  /// The wire value.
+  final String value;
+
+  const AgentOwnerIdType(this.value);
+
+  /// Parses a wire value, or returns `null` for a type this SDK does not know.
+  static AgentOwnerIdType? fromValue(String? value) {
+    for (final type in values) {
+      if (type.value == value) return type;
+    }
+    return null;
+  }
+}
+
+/// The person accountable for an [Agent]. A local owner is an entity of this deployment, named by
+/// its entity id. An owner managed in another identity system is not looked up.
+class AgentOwner {
+  final String id;
+
+  /// What [id] holds. The server defaults it to [AgentOwnerIdType.uuid], and a local owner must be
+  /// one. On a read, `null` when absent or a type this SDK does not know.
+  final AgentOwnerIdType? idType;
+
+  /// Whether the owner is an entity of this deployment. The server treats `null` as `true`.
+  final bool? isLocal;
+
+  const AgentOwner({required this.id, this.idType, this.isLocal});
+
+  /// Reads an `owner` object, or returns `null` when [json] is not one or carries no id.
+  static AgentOwner? maybeFromJson(Object? json) {
+    if (json is! Map) return null;
+    final map = readMap(json);
+    final id = readOptionalString(map, 'id');
+    if (id == null || id.isEmpty) return null;
+    return AgentOwner(
+      id: id,
+      idType: AgentOwnerIdType.fromValue(readOptionalString(map, 'idType')),
+      isLocal: readOptionalBool(map, 'isLocal'),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        if (idType != null) 'idType': idType!.value,
+        if (isLocal != null) 'isLocal': isLocal,
+      };
+}
+
 /// An agent record administered through the management API.
 ///
 /// A record read from a list carries only the basic fields (id, name, type, OU, client id,
@@ -18,7 +72,7 @@ class Agent {
   final String? ouHandle;
   final String? description;
   final String? clientId;
-  final String? owner;
+  final AgentOwner? owner;
   final String? logoUrl;
   final bool isReadOnly;
   final Map<String, dynamic> attributes;
@@ -63,7 +117,7 @@ class Agent {
         ouHandle: readOptionalString(json, 'ouHandle'),
         description: readOptionalString(json, 'description'),
         clientId: readOptionalString(json, 'clientId'),
-        owner: readOptionalString(json, 'owner'),
+        owner: AgentOwner.maybeFromJson(json['owner']),
         logoUrl: readOptionalString(json, 'logoUrl'),
         isReadOnly: readOptionalBool(json, 'isReadOnly') ?? false,
         attributes: readMap(json['attributes']),
@@ -111,7 +165,7 @@ class CreateAgentRequest {
   final String ouId;
   final String type;
   final String? description;
-  final String? owner;
+  final AgentOwner? owner;
   final String? logoUrl;
   final Map<String, dynamic>? attributes;
   final List<Map<String, dynamic>>? inboundAuthConfig;
@@ -132,7 +186,7 @@ class CreateAgentRequest {
         'ouId': ouId,
         'type': type,
         if (description != null) 'description': description,
-        if (owner != null) 'owner': owner,
+        if (owner != null) 'owner': owner!.toJson(),
         if (logoUrl != null) 'logoUrl': logoUrl,
         if (attributes != null) 'attributes': attributes,
         if (inboundAuthConfig != null) 'inboundAuthConfig': inboundAuthConfig,
@@ -145,7 +199,7 @@ class UpdateAgentRequest {
   final String? ouId;
   final String? type;
   final String? description;
-  final String? owner;
+  final AgentOwner? owner;
   final String? logoUrl;
   final Map<String, dynamic>? attributes;
   final List<String>? allowedAgentTypes;
@@ -181,7 +235,7 @@ class UpdateAgentRequest {
         if (ouId != null) 'ouId': ouId,
         if (type != null) 'type': type,
         if (description != null) 'description': description,
-        if (owner != null) 'owner': owner,
+        if (owner != null) 'owner': owner!.toJson(),
         if (logoUrl != null) 'logoUrl': logoUrl,
         if (attributes != null) 'attributes': attributes,
         if (allowedAgentTypes != null) 'allowedAgentTypes': allowedAgentTypes,
