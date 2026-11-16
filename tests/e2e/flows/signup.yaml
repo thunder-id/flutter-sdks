@@ -121,24 +121,28 @@ env:
             id: "thunderid-field-email"
           timeout: 60000
 
-# See the comment above the first waitForAnimationToEnd in this file - same settling race,
-# same fix, for the first (and only) field on this freshly-rendered step.
-- waitForAnimationToEnd:
-    timeout: 3000
+      # See the comment above the first waitForAnimationToEnd in this file - same settling race,
+      # same fix, for the first (and only) field on this freshly-rendered step.
+      - waitForAnimationToEnd:
+          timeout: 3000
 
-- tapOn:
-    id: "thunderid-field-email"
-- inputText: ${output.username}@example.com
+      - tapOn:
+          id: "thunderid-field-email"
+      - inputText: ${output.username}@example.com
 
-- tapOn:
-    id: "thunderid-action-action_schema_attrs"
+      - tapOn:
+          id: "thunderid-action-action_schema_attrs"
 
-# Registration completes without issuing an assertion, so the user is created but NOT signed in
-# and the app falls back to the landing screen. Signing in with the credentials just registered
-# is what proves the account is actually usable.
-- extendedWaitUntil:
-    visible: "Get started"
-    timeout: 60000
+      # Registration completes without issuing an assertion, so the user is created but NOT
+      # signed in and the app falls back to the landing screen. Signing in with the credentials
+      # just registered is what proves the account is actually usable.
+      #
+      # This submission is exposed to the same dropped connection (NSURLErrorDomain -1005) as
+      # the entry, and it strands the app on the same error sheet, so it sits inside this retry:
+      # a failed attempt restarts and registers again under a new name.
+      - extendedWaitUntil:
+          visible: "Get started"
+          timeout: 60000
 
 # Same transport exposure as the registration entry above.
 - retry:

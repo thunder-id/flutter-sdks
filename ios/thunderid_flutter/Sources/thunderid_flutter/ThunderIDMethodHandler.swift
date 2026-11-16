@@ -68,7 +68,9 @@ final class ThunderIDMethodHandler {
                 result(nil)
 
             case "buildSignInUrl":
-                let url = try client.buildSignInURL()
+                // signInURL reads the server's metadata first, so the URL uses the advertised
+                // authorization endpoint (and a pushed request when the server requires one).
+                let url = try await client.signInURL()
                 result(url.absoluteString)
 
             case "handleRedirectCallback":
@@ -337,6 +339,7 @@ final class ThunderIDMethodHandler {
             attestationTokenProvider: attestationEnabled
                 ? { try await AppAttestTokenProvider().requestToken() } : nil,
             tokenValidation: validation,
+            endpoints: ThunderIDEndpoints(wellKnown: args["wellKnown"] as? String),
             vendor: args["vendor"] as? String ?? VendorConstants.vendorPrefix
         )
     }

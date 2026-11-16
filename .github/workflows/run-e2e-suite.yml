@@ -29,7 +29,9 @@ jobs:
   e2e:
     name: 🎭 E2E Tests
     runs-on: macos-latest
-    timeout-minutes: 45
+    # Setup alone can take over 25 minutes on a loaded runner, and the flows' retries for dropped
+    # connections can add several more, so 45 left the last flow cut off mid-run.
+    timeout-minutes: 60
     steps:
       - name: 📥 Checkout Code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
