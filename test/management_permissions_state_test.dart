@@ -29,6 +29,43 @@ void main() {
     test('an empty requirement is always covered', () {
       expect(hasPermission(const [], ''), isTrue);
     });
+
+    test('matching follows the resource server', () {
+      const exact = PermissionMatching(hierarchical: false);
+      expect(hasPermission(['orders'], 'orders:create', matching: exact), isFalse);
+      expect(hasPermission(['orders:create'], 'orders:create', matching: exact), isTrue);
+
+      const dotted = PermissionMatching(delimiter: '.');
+      expect(hasPermission(['orders'], 'orders.create', matching: dotted), isTrue);
+      expect(hasPermission(['orders'], 'orders:create', matching: dotted), isFalse);
+
+      expect(
+        hasPermission(['orders'], 'orderscreate', matching: const PermissionMatching(delimiter: '')),
+        isFalse,
+      );
+      expect(hasPermission([''], ':orders'), isFalse);
+    });
+
+    test('a resource server carries hierarchical permissions', () {
+      final server = ResourceServer.fromJson({
+        'id': 'rs-1',
+        'name': 'Orders',
+        'identifier': 'orders',
+        'type': 'API',
+        'ouId': 'o',
+        'delimiter': ':',
+        'hierarchicalPermissions': true,
+      });
+      expect(server.hierarchicalPermissions, isTrue);
+
+      const request = CreateResourceServerRequest(
+        name: 'Orders',
+        identifier: 'orders',
+        ouId: 'o',
+        hierarchicalPermissions: true,
+      );
+      expect(request.toJson()['hierarchicalPermissions'], isTrue);
+    });
   });
 
   group('getTokenPermissions', () {

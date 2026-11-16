@@ -52,6 +52,9 @@ class ResourceServer {
 
   /// The separator between the parts of a permission, such as `:`.
   final String delimiter;
+
+  /// Whether a permission covers the permissions beneath it.
+  final bool hierarchicalPermissions;
   final AuthorizationEngineConfig? authorizationEngine;
   final bool isReadOnly;
 
@@ -62,6 +65,7 @@ class ResourceServer {
     required this.type,
     required this.ouId,
     required this.delimiter,
+    this.hierarchicalPermissions = false,
     this.description,
     this.authorizationEngine,
     this.isReadOnly = false,
@@ -75,6 +79,7 @@ class ResourceServer {
         type: readString(json, 'type'),
         ouId: readString(json, 'ouId'),
         delimiter: readString(json, 'delimiter'),
+        hierarchicalPermissions: readOptionalBool(json, 'hierarchicalPermissions') ?? false,
         authorizationEngine: json['authorizationEngine'] is Map
             ? AuthorizationEngineConfig.fromJson(readMap(json['authorizationEngine']))
             : null,
@@ -92,6 +97,7 @@ class CreateResourceServerRequest {
   /// See [ResourceServerTypes]. The server defaults it when omitted.
   final String? type;
   final String? delimiter;
+  final bool? hierarchicalPermissions;
 
   const CreateResourceServerRequest({
     required this.name,
@@ -100,6 +106,7 @@ class CreateResourceServerRequest {
     this.description,
     this.type,
     this.delimiter,
+    this.hierarchicalPermissions,
   });
 
   Map<String, dynamic> toJson() => {
@@ -109,6 +116,7 @@ class CreateResourceServerRequest {
         if (description != null) 'description': description,
         if (type != null) 'type': type,
         if (delimiter != null) 'delimiter': delimiter,
+        if (hierarchicalPermissions != null) 'hierarchicalPermissions': hierarchicalPermissions,
       };
 }
 
