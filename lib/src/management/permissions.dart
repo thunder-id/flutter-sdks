@@ -31,11 +31,30 @@ List<String> getTokenPermissions(String? accessToken) {
   }
 }
 
+/// How a resource server matches permissions: its `delimiter` and `hierarchicalPermissions`.
+class PermissionMatching {
+  final String delimiter;
+  final bool hierarchical;
+
+  const PermissionMatching({this.delimiter = ':', this.hierarchical = true});
+}
+
 /// Whether [granted] covers [required], with the server's hierarchy: permissions are
 /// `:`-separated paths, and a permission covers itself and everything under it, so `system`
-/// covers `system:user:view`. An empty [required] is always covered.
+/// covers `system:user:view`. An empty [required] is always covered. [matching] follows another
+/// resource server's rules.
 ///
 /// The result only decides what to show; the server still decides every request.
-bool hasPermission(Iterable<String> granted, String required) =>
-    required.isEmpty ||
-    granted.any((permission) => permission == required || required.startsWith('$permission:'));
+bool hasPermission(
+  Iterable<String> granted,
+  String required, {
+  PermissionMatching matching = const PermissionMatching(),
+}) {
+  final delimiter = matching.hierarchical ? matching.delimiter : '';
+  return required.isEmpty ||
+      granted.any(
+        (permission) =>
+            permission == required ||
+            (delimiter.isNotEmpty && permission.isNotEmpty && required.startsWith('$permission$delimiter')),
+      );
+}
