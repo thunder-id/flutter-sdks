@@ -1,3 +1,13 @@
+## 1.7.0
+
+- Add flow variables form and shared flow list components
+- Support standard OpenID Connect providers for redirect sign-in
+- Handle an expired flow execution in the sign-in and sign-up widgets
+- Open attribute verification on its own page from the profile
+- Move the native SDKs to the releases with attribute verification
+- Let users verify their email address and mobile number from their account
+- Limit group assignees to to group OU
+
 ## 1.6.0
 
 - Let admin components run administration flows and lifecycle actions
