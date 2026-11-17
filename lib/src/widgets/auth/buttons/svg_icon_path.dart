@@ -3,7 +3,7 @@
 
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// A single colored `<path d="...">` from a brand icon's SVG source, ported into a Flutter
 /// [Path] and scaled into a shared [viewBox]. Mirrors the `SVGIconPath`/`PathParser` ports used

@@ -3,7 +3,7 @@
 
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'curated_logo_icons.dart';
 import 'logo_spec.dart';

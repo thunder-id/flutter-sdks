@@ -1,8 +1,8 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:thunderid_flutter/src/widgets/auth/buttons/github_button.dart';
 import 'package:thunderid_flutter/src/widgets/auth/buttons/google_button.dart';
 import 'package:thunderid_flutter/src/widgets/auth/buttons/outlined_trigger_button.dart';

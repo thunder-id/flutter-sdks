@@ -3,15 +3,21 @@
 
 import '../management/account_lifecycle.dart';
 import '../management/administration_flows.dart';
+import '../management/connections.dart';
+import '../management/flows.dart';
 import '../management/management_transport.dart';
 import '../management/thunderid_management_client.dart';
 import '../models/management/administration.dart';
 import '../models/management/agent.dart';
 import '../models/management/application.dart';
+import '../models/management/connection.dart';
+import '../models/management/flow_definition.dart';
+import '../models/management/flow_variable.dart';
 import '../models/management/group.dart';
 import '../models/management/managed_user.dart';
 import '../models/management/management_page.dart';
 import '../models/management/role.dart';
+import '../models/management/sharing_policy.dart';
 import 'resource_notifiers.dart';
 
 /// Query key prefixes, shared with the React SDK so invalidation behaves the same way.
@@ -32,6 +38,9 @@ abstract final class ManagementQueryKeys {
   static const String application = 'application';
   static const String applications = 'applications';
   static const String administrationFlows = 'administration-flows';
+  static const String flows = 'flows';
+  static const String flowVariableDefinitions = 'flow-variable-definitions';
+  static const String flowVariableValues = 'flow-variable-values';
 }
 
 /// Variables of [ManagementResources.updateUserMutation].
@@ -54,6 +63,10 @@ typedef UpdateAgentVariables = ({String agentId, UpdateAgentRequest data});
 
 /// Variables of [ManagementResources.updateApplicationMutation].
 typedef UpdateApplicationVariables = ({String applicationId, UpdateApplicationRequest data});
+
+/// Variables of [ManagementResources.updateFlowVariablesMutation]: the flow, the organization unit,
+/// and every value it sets.
+typedef UpdateFlowVariablesVariables = ({String flowId, String ouId, FlowVariableValues values});
 
 /// Variables of [ManagementResources.accountLifecycleMutation]: the identity, the action, and the
 /// operator's optional note.
@@ -616,6 +629,95 @@ class ManagementResources {
         ),
         (String applicationId) => [
           [ManagementQueryKeys.application, applicationId],
+        ],
+        onSuccess,
+        onError,
+      );
+
+  // ── Flows ───────────────────────────────────────────────────────────────
+
+  /// Lists flows; with [ouId], the ones that organization unit owns followed by the ones shared
+  /// with it (see [FlowOperations.getFlows]).
+  ResourceQuery<ManagementPage<ManagedFlow>> flowsQuery({
+    String? flowType,
+    String? ouId,
+    int? limit,
+    int? offset,
+    bool enabled = true,
+    ManagementFetcher? fetcher,
+  }) =>
+      _query(
+        [
+          ManagementQueryKeys.flows,
+          {'flowType': flowType, 'ouId': ouId, 'limit': limit, 'offset': offset},
+        ],
+        () => client.getFlows(flowType: flowType, ouId: ouId, limit: limit, offset: offset, fetcher: fetcher),
+        enabled,
+      );
+
+  /// [flowId] as the organization unit [ouId] sees it, which carries the variables it declares
+  /// (read them with `getFlowVariableDefinitions`).
+  ResourceQuery<FlowDefinition> flowVariableDefinitionsQuery(
+    String? flowId,
+    String? ouId, {
+    bool enabled = true,
+    ManagementFetcher? fetcher,
+  }) =>
+      _query(
+        [ManagementQueryKeys.flowVariableDefinitions, flowId, ouId],
+        () => client.getFlow(flowId!, ouId: ouId, fetcher: fetcher),
+        enabled && flowId != null && ouId != null,
+      );
+
+  /// The values the organization unit [ouId] has set for [flowId]'s variables.
+  ResourceQuery<FlowVariables> flowVariableValuesQuery(
+    String? flowId,
+    String? ouId, {
+    bool enabled = true,
+    ManagementFetcher? fetcher,
+  }) =>
+      _query(
+        [ManagementQueryKeys.flowVariableValues, flowId, ouId],
+        () => client.getFlowVariables(flowId!, ouId!, fetcher: fetcher),
+        enabled && flowId != null && ouId != null,
+      );
+
+  /// What the organization unit [ouId] may do with [flowId]'s variables.
+  ResourceQuery<ResolvedOverlay> flowOverlayRulesQuery(
+    String? flowId,
+    String? ouId, {
+    bool enabled = true,
+    ManagementFetcher? fetcher,
+  }) =>
+      _query(
+        [ManagementQueryKeys.flowVariableDefinitions, 'overlay', flowId, ouId],
+        () => client.getFlowOverlayRules(flowId!, ouId!, fetcher: fetcher),
+        enabled && flowId != null && ouId != null,
+      );
+
+  /// The first 100 connections the organization unit [ouId] owns or has shared into it, the
+  /// choices of a connection variable.
+  ResourceQuery<ManagementPage<ConnectionInstance>> flowVariableConnectionsQuery(
+    String? ouId, {
+    bool enabled = true,
+    ManagementFetcher? fetcher,
+  }) =>
+      _query(
+        [ManagementQueryKeys.flowVariableDefinitions, 'connections', ouId],
+        () => client.getConnections(ouId: ouId, limit: 100, fetcher: fetcher),
+        enabled && ouId != null,
+      );
+
+  /// Replaces the values an organization unit holds for a flow's variables, then reloads them.
+  ResourceMutation<UpdateFlowVariablesVariables, FlowVariables> updateFlowVariablesMutation({
+    void Function(FlowVariables data, UpdateFlowVariablesVariables variables)? onSuccess,
+    void Function(Object error, UpdateFlowVariablesVariables variables)? onError,
+    ManagementFetcher? fetcher,
+  }) =>
+      _mutation(
+        (UpdateFlowVariablesVariables v) => client.updateFlowVariables(v.flowId, v.ouId, v.values, fetcher: fetcher),
+        (UpdateFlowVariablesVariables v) => [
+          [ManagementQueryKeys.flowVariableValues, v.flowId, v.ouId],
         ],
         onSuccess,
         onError,

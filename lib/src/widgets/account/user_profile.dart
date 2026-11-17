@@ -3,7 +3,7 @@
 
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../i18n/thunderid_i18n.dart';
 import '../../models/attribute_verification.dart';
