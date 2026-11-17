@@ -1,3 +1,7 @@
+## 1.8.0
+
+- Support hierarchical permissions in permission checks
+
 ## 1.7.0
 
 - Add flow variables form and shared flow list components
