@@ -23,6 +23,9 @@ class AdminButton extends StatelessWidget {
   /// Overrides the accessible name when [label] alone is ambiguous, e.g. "Remove" in a list.
   final String? semanticLabel;
 
+  /// A decorative icon before [label], replaced by the spinner while loading.
+  final IconData? icon;
+
   const AdminButton({
     super.key,
     required this.ac,
@@ -32,6 +35,7 @@ class AdminButton extends StatelessWidget {
     this.variant = AdminButtonVariant.primary,
     this.isLoading = false,
     this.semanticLabel,
+    this.icon,
   });
 
   @override
@@ -64,6 +68,7 @@ class AdminButton extends StatelessWidget {
       elevation: const WidgetStatePropertyAll(0),
     );
 
+    final icon = this.icon;
     final child = isLoading
         ? Row(
             mainAxisSize: MainAxisSize.min,
@@ -77,7 +82,16 @@ class AdminButton extends StatelessWidget {
               Text(label, semanticsLabel: semanticLabel),
             ],
           )
-        : Text(label, semanticsLabel: semanticLabel);
+        : icon != null
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 16),
+                  const SizedBox(width: 6),
+                  Text(label, semanticsLabel: semanticLabel),
+                ],
+              )
+            : Text(label, semanticsLabel: semanticLabel);
 
     return Semantics(
       identifier: identifier,

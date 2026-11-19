@@ -60,6 +60,24 @@ Uri buildManagementUrl(
   return parsed.replace(pathSegments: path, queryParameters: params.isEmpty ? null : params);
 }
 
+/// A server-level URL under [baseUrl], never a collection override. An empty [baseUrl] raises
+/// [ThunderIDErrorCode.invalidConfiguration] before anything is sent.
+Uri buildServerUrl(
+  String operation,
+  String baseUrl,
+  String path, {
+  String? id,
+  Map<String, Object?> query = const {},
+}) {
+  if (baseUrl.trim().isEmpty) {
+    throw IAMException(
+      ThunderIDErrorCode.invalidConfiguration,
+      '$operation: a baseUrl is required to run an administration flow; a collection URL is not enough.',
+    );
+  }
+  return buildManagementUrl(operation, '${baseUrl.replaceFirst(RegExp(r'/+$'), '')}/$path', id: id, query: query);
+}
+
 /// Maps an HTTP failure status onto an error code. 403 and 404 are kept distinct so a caller
 /// can tell a missing permission from a missing resource (spec "Management operations",
 /// requirement 7).

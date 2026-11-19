@@ -31,9 +31,10 @@ AttributeVerificationStatus? verificationStatusOf({
       : AttributeVerificationStatus.unverified;
 }
 
-/// Whether saving [name] opens its verification by itself: only for a changed `email` the saved
-/// profile stores and reports unverified. An absent `verifiedAttributes` leaves the status unknown,
-/// so nothing opens on that basis; a mobile number is verified on request only.
+/// The legacy check for apps that opt into starting verification after a save: true only for a
+/// changed `email` the saved profile stores and reports unverified. An absent `verifiedAttributes`
+/// leaves the status unknown, so nothing opens on that basis; a mobile number is verified on request
+/// only.
 bool shouldVerifyAfterSave({
   required String name,
   required Map<String, model.AttributeSchema> schema,
@@ -68,17 +69,42 @@ class VerificationStatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dark = MediaQuery.platformBrightnessOf(context) == Brightness.dark;
     final verified = status == AttributeVerificationStatus.verified;
-    final label = i18n.resolve(
-      verified
-          ? 'userProfile.verification.verified'
-          : 'userProfile.verification.unverified',
+    return VerificationStatusLabel(
+      verified: verified,
+      label: i18n.resolve(
+        verified ? 'userProfile.verification.verified' : 'userProfile.verification.unverified',
+      ),
+      identifier: identifier,
     );
+  }
+}
+
+/// A translated Verified or Unverified [label] with its icon, optionally on a tinted [pill].
+class VerificationStatusLabel extends StatelessWidget {
+  final bool verified;
+  final String label;
+  final String? identifier;
+
+  /// Draws the status on a tinted capsule.
+  final bool pill;
+
+  const VerificationStatusLabel({
+    super.key,
+    required this.verified,
+    required this.label,
+    this.identifier,
+    this.pill = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = MediaQuery.platformBrightnessOf(context) == Brightness.dark;
+    final unverifiedLight = pill ? const Color(0xFF92400E) : const Color(0xFFB45309);
     final color = verified
         ? (dark ? const Color(0xFF4ADE80) : const Color(0xFF166534))
-        : (dark ? const Color(0xFFF5B544) : const Color(0xFFB45309));
-    final badge = Row(
+        : (dark ? const Color(0xFFF5B544) : unverifiedLight);
+    final row = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(
@@ -97,7 +123,12 @@ class VerificationStatusBadge extends StatelessWidget {
       identifier: identifier,
       label: label,
       excludeSemantics: true,
-      child: badge,
+      child: pill
+          ? DecoratedBox(
+              decoration: ShapeDecoration(color: color.withValues(alpha: 0.14), shape: const StadiumBorder()),
+              child: Padding(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), child: row),
+            )
+          : row,
     );
   }
 }

@@ -5,8 +5,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/thunder-id/ios-sdks.git",
       "state" : {
-        "revision" : "ab7ab8c4cb356551a8c51b7d5de7f40da5f8d2e5",
-        "version" : "1.13.1"
+        "revision" : "195d8f1c77126bd0bc7d236c212b90efaa07e7a1",
+        "version" : "1.16.0"
       }
     }
   ],

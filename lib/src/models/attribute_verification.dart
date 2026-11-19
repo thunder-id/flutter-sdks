@@ -3,8 +3,10 @@
 
 import 'user_profile.dart';
 
-/// Wire names and eligibility rules for self user attribute verification, which
-/// [ThunderIDClient.verifyAttribute] runs as a `SELF` flow.
+/// Wire names and eligibility rules for user attribute verification: by the user, which
+/// [ThunderIDClient.verifyAttribute] runs as a `SELF` flow, or by an administrator, which
+/// `sendUserAttributeVerification` runs as an `ADMIN_INITIATED` flow, whose handle the server
+/// configures as `adminAttributeVerificationFlow`.
 class AttributeVerification {
   AttributeVerification._();
 
@@ -35,8 +37,7 @@ class AttributeVerification {
   /// Schema property types whose verification status is shown, and which the user can verify.
   static const Set<String> verifiableAttributeTypes = {'email', 'mobile'};
 
-  /// Schema property types whose changed value opens verification after a save. Mobile is verified on
-  /// request only, since sending an SMS needs a provider the deployment may not have.
+  /// The legacy list for apps that opt into starting verification after a save.
   static const Set<String> verifyAfterSaveAttributeTypes = {'email'};
 
   /// Whether [attribute] is a top-level, single-valued property of type `email` or `mobile` in the
@@ -55,7 +56,7 @@ class AttributeVerification {
   static bool isVerifiableType(String? type) =>
       type != null && verifiableAttributeTypes.contains(type.toLowerCase());
 
-  /// Whether a saved change to a schema property of [type] opens verification by itself.
+  /// Whether [type] is in the legacy list for apps that opt into verification after a save.
   static bool opensAfterSave(String? type) =>
       type != null &&
       verifyAfterSaveAttributeTypes.contains(type.toLowerCase());

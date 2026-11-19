@@ -963,19 +963,11 @@ class _BaseUserProfileState extends State<BaseUserProfile> {
       );
       final updated = await client.updateUserProfile(payload);
       if (!mounted) return;
-      final opensVerification = shouldVerifyAfterSave(
-        name: name,
-        schema: _schema,
-        previousValue: field.rawValue,
-        saved: updated,
-      );
       _applyProfile(updated);
       setState(() {
         _editingFields.remove(name);
         _editedValues.remove(name);
-        if (opensVerification) {
-          _verifyingField = name;
-        } else if (_verifyingField == name) {
+        if (_verifyingField == name) {
           _verifyingField = null;
         }
       });
