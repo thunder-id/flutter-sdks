@@ -1,3 +1,7 @@
+## 1.9.0
+
+- Let administrators send users a link to verify their email address
+
 ## 1.8.0
 
 - Support hierarchical permissions in permission checks
