@@ -4,12 +4,60 @@
 import 'access_status.dart';
 import 'json_reader.dart';
 
+/// The kind of an agent: a category set when the agent is created and never changed, which can add
+/// rules of its own to the agent. `null` on an agent means an ordinary agent. A kind this SDK does
+/// not know keeps its raw value.
+abstract final class AgentKind {
+  /// A personal agent: one that acts only for its owner, a user.
+  static const String personal = 'personal-assistant';
+}
+
+/// What an [AgentOwner.id] holds. A type this SDK does not know keeps its raw value.
+abstract final class AgentOwnerIdType {
+  static const String uuid = 'uuid';
+  static const String email = 'email';
+  static const String mobile = 'mobile';
+}
+
+/// The person accountable for an agent. A local owner is an entity of the same deployment and is
+/// named by its entity ID. An owner managed in another identity system is not looked up.
+class AgentOwner {
+  final String id;
+
+  /// One of [AgentOwnerIdType]. `null` reads as [AgentOwnerIdType.uuid], and a local owner must be
+  /// one.
+  final String? idType;
+
+  /// Whether the owner is an entity of this deployment. `null` reads as `true`.
+  final bool? isLocal;
+
+  const AgentOwner({required this.id, this.idType, this.isLocal});
+
+  /// Reads an `owner` object, or returns `null` when [json] is not one or carries no ID.
+  static AgentOwner? maybeFromJson(Object? json) {
+    if (json is! Map) return null;
+    final map = readMap(json);
+    final id = readOptionalString(map, 'id');
+    if (id == null || id.isEmpty) return null;
+    return AgentOwner(id: id, idType: readOptionalString(map, 'idType'), isLocal: readOptionalBool(map, 'isLocal'));
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        if (idType != null) 'idType': idType,
+        if (isLocal != null) 'isLocal': isLocal,
+      };
+}
+
 /// An agent record administered through the management API.
 ///
 /// A record read from a list carries only the basic fields (id, name, type, OU, client id,
 /// description); read it by id for the rest.
 class Agent {
   final String id;
+
+  /// The agent's name: its display attribute when the server resolves one, otherwise its `name`
+  /// attribute. Empty when it has neither.
   final String name;
   final String ouId;
 
@@ -18,7 +66,11 @@ class Agent {
   final String? ouHandle;
   final String? description;
   final String? clientId;
-  final String? owner;
+  final AgentOwner? owner;
+
+  /// One of [AgentKind], set when the agent is created and never changed. `null` for an ordinary
+  /// agent.
+  final String? kind;
   final String? logoUrl;
   final bool isReadOnly;
   final Map<String, dynamic> attributes;
@@ -43,6 +95,7 @@ class Agent {
     this.description,
     this.clientId,
     this.owner,
+    this.kind,
     this.logoUrl,
     this.isReadOnly = false,
     this.attributes = const {},
@@ -57,13 +110,19 @@ class Agent {
 
   factory Agent.fromJson(Map<String, dynamic> json) => Agent(
         id: readString(json, 'id'),
-        name: readString(json, 'name'),
+        name: [
+              readOptionalString(json, 'display'),
+              readOptionalString(readMap(json['attributes']), 'name'),
+              readOptionalString(json, 'name'),
+            ].firstWhere((name) => name != null && name.isNotEmpty, orElse: () => null) ??
+            readString(json, 'id'),
         ouId: readString(json, 'ouId'),
         type: readString(json, 'type'),
         ouHandle: readOptionalString(json, 'ouHandle'),
         description: readOptionalString(json, 'description'),
         clientId: readOptionalString(json, 'clientId'),
-        owner: readOptionalString(json, 'owner'),
+        owner: AgentOwner.maybeFromJson(json['owner']),
+        kind: readOptionalString(json, 'kind'),
         logoUrl: readOptionalString(json, 'logoUrl'),
         isReadOnly: readOptionalBool(json, 'isReadOnly') ?? false,
         attributes: readMap(json['attributes']),
@@ -111,7 +170,12 @@ class CreateAgentRequest {
   final String ouId;
   final String type;
   final String? description;
-  final String? owner;
+  final AgentOwner? owner;
+
+  /// One of [AgentKind], fixed once the agent is created. Leave it `null` for an ordinary agent. A
+  /// kind can add requirements of its own: [AgentKind.personal] requires [owner] to name a local
+  /// user.
+  final String? kind;
   final String? logoUrl;
   final Map<String, dynamic>? attributes;
   final List<Map<String, dynamic>>? inboundAuthConfig;
@@ -122,6 +186,7 @@ class CreateAgentRequest {
     required this.type,
     this.description,
     this.owner,
+    this.kind,
     this.logoUrl,
     this.attributes,
     this.inboundAuthConfig,
@@ -132,7 +197,8 @@ class CreateAgentRequest {
         'ouId': ouId,
         'type': type,
         if (description != null) 'description': description,
-        if (owner != null) 'owner': owner,
+        if (owner != null) 'owner': owner!.toJson(),
+        if (kind != null) 'kind': kind,
         if (logoUrl != null) 'logoUrl': logoUrl,
         if (attributes != null) 'attributes': attributes,
         if (inboundAuthConfig != null) 'inboundAuthConfig': inboundAuthConfig,
@@ -145,7 +211,7 @@ class UpdateAgentRequest {
   final String? ouId;
   final String? type;
   final String? description;
-  final String? owner;
+  final AgentOwner? owner;
   final String? logoUrl;
   final Map<String, dynamic>? attributes;
   final List<String>? allowedAgentTypes;
@@ -181,7 +247,7 @@ class UpdateAgentRequest {
         if (ouId != null) 'ouId': ouId,
         if (type != null) 'type': type,
         if (description != null) 'description': description,
-        if (owner != null) 'owner': owner,
+        if (owner != null) 'owner': owner!.toJson(),
         if (logoUrl != null) 'logoUrl': logoUrl,
         if (attributes != null) 'attributes': attributes,
         if (allowedAgentTypes != null) 'allowedAgentTypes': allowedAgentTypes,

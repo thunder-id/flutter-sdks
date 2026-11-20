@@ -13,6 +13,7 @@ import '../models/user.dart';
 import '../models/user_profile.dart';
 import '../state/granted_permissions.dart';
 import '../state/management_resources.dart';
+import '../state/personal_agent_resources.dart';
 import '../thunderid_client.dart';
 
 /// Provides a [ThunderIDClient] and reactive authentication state to the widget tree.
@@ -82,6 +83,14 @@ class ThunderIDState extends State<ThunderIDProvider> {
   /// The shared state layer over [management]: queries and mutations created from it reload
   /// each other. Available once [initialized] is true.
   ManagementResources get managementResources => _managementResources ??= ManagementResources(management);
+
+  PersonalAgentResources? _personalAgentResources;
+
+  /// The state layer over the signed-in user's own agents. It shares [managementResources]'
+  /// invalidator, so writes through either reload the reads they affect. Available once
+  /// [initialized] is true.
+  PersonalAgentResources get personalAgentResources => _personalAgentResources ??=
+      PersonalAgentResources(client, invalidator: managementResources.invalidator);
 
   /// A [GrantedPermissionsNotifier] over the signed-in user's access token. The caller owns and
   /// disposes it.

@@ -61,9 +61,18 @@ const _sampleAgents = [
     type: 'assistant',
     description: 'Books travel for employees',
     clientId: 'concierge-client',
-    owner: 'u-ada',
+    owner: AgentOwner(id: 'u-ada'),
   ),
   Agent(id: 'a-triage', name: 'Ticket triage', ouId: _ou, type: 'worker', clientId: 'triage-client'),
+  Agent(
+    id: 'a-spending',
+    name: 'Spending assistant',
+    ouId: _ou,
+    type: 'assistant',
+    clientId: 'spending-client',
+    owner: AgentOwner(id: 'u-ada'),
+    kind: AgentKind.personal,
+  ),
 ];
 
 const _sampleMembers = [

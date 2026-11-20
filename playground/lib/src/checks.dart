@@ -395,6 +395,27 @@ final List<CheckDef> checkDefs = [
     },
   ),
   CheckDef(
+    id: 'personalAgents',
+    section: 'Session',
+    name: 'Personal agents',
+    api: 'client.getMeAgents() · getMeAgent()',
+    run: (sdk, config) async {
+      _requireSignedIn(sdk);
+      final page = await _log.trace(
+        'getMeAgents',
+        () => sdk.client.getMeAgents(kind: AgentKind.personal),
+        detail: (p) => '${p.totalResults} agents',
+      );
+      if (page.items.isEmpty) return const CheckResult.pass('No personal agents');
+      final agent = await _log.trace(
+        'getMeAgent',
+        () => sdk.client.getMeAgent(page.items.first.id),
+        detail: (a) => a.name,
+      );
+      return CheckResult.pass('${page.totalResults} personal agents; read ${agent.name}');
+    },
+  ),
+  CheckDef(
     id: 'verification',
     section: 'Session',
     name: 'Attribute verification',
