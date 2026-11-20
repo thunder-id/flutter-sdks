@@ -5,6 +5,12 @@ import android.content.Context
 import android.net.Uri
 import io.flutter.plugin.common.MethodChannel.Result
 import dev.thunderid.android.*
+import dev.thunderid.android.api.account.UpdateMeAgentRequest
+import dev.thunderid.android.api.management.AccessStatus
+import dev.thunderid.android.api.management.Agent
+import dev.thunderid.android.api.management.AgentOwner
+import dev.thunderid.android.api.management.BasicAgent
+import dev.thunderid.android.api.management.OAuth2Config
 import dev.thunderid.android.api.auth.FederatedAuthSession
 import dev.thunderid.android.api.auth.PasskeyClient
 import kotlinx.coroutines.CancellationException
@@ -199,6 +205,46 @@ class ThunderIDMethodHandler(private val context: Context) {
                     }
                     result.success(encodeFlowResponse(response))
                 }
+                // The native SDK sends the /users/me/agents calls with the user's token and
+                // refuses a blank agent ID before any request.
+                "getMeAgents" -> {
+                    val page = client.getMeAgents(
+                        kind = args["kind"] as? String,
+                        limit = (args["limit"] as? Number)?.toInt(),
+                        offset = (args["offset"] as? Number)?.toInt(),
+                    )
+                    result.success(
+                        mapOf(
+                            "totalResults" to page.totalResults,
+                            "startIndex" to page.startIndex,
+                            "count" to page.count,
+                            "agents" to page.agents.map { encodeBasicAgent(it) },
+                        )
+                    )
+                }
+                "getMeAgent" -> {
+                    result.success(encodeAgent(client.getMeAgent(args["id"] as? String ?: "")))
+                }
+                "updateMeAgent" -> {
+                    @Suppress("UNCHECKED_CAST")
+                    val request = args["request"] as? Map<String, Any?> ?: emptyMap()
+                    result.success(encodeAgent(client.updateMeAgent(args["id"] as? String ?: "", buildUpdateMeAgentRequest(request))))
+                }
+                "deleteMeAgent" -> {
+                    client.deleteMeAgent(args["id"] as? String ?: "")
+                    result.success(null)
+                }
+                "suspendMeAgent" -> {
+                    client.suspendMeAgent(args["id"] as? String ?: "")
+                    result.success(null)
+                }
+                "unsuspendMeAgent" -> {
+                    client.unsuspendMeAgent(args["id"] as? String ?: "")
+                    result.success(null)
+                }
+                "suspendAllMeAgents" -> {
+                    result.success(mapOf("suspendedCount" to client.suspendAllMeAgents().suspendedCount))
+                }
                 "getFlowMeta" -> {
                     val appId = args["applicationId"] as? String ?: ""
                     val language = args["language"] as? String ?: "en-US"
@@ -338,6 +384,86 @@ class ThunderIDMethodHandler(private val context: Context) {
         "isReadOnly" to profile.isReadOnly,
         // Absent (null) means the server does not report verification, which differs from none verified.
         "verifiedAttributes" to profile.verifiedAttributes?.mapValues { mapOf("verifiedAt" to it.value.verifiedAt) },
+    )
+
+    @Suppress("UNCHECKED_CAST")
+    private fun buildUpdateMeAgentRequest(map: Map<String, Any?>) = UpdateMeAgentRequest(
+        attributes = map["attributes"] as? Map<String, Any?> ?: emptyMap(),
+        description = map["description"] as? String,
+        grantTypes = (map["grantTypes"] as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
+        redirectUris = (map["redirectUris"] as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
+    )
+
+    // Agents cross the channel in the server's JSON shape, so the Dart models read them as they
+    // read a management response. Attributes come from Gson as plain maps and lists.
+    private fun encodeAgent(agent: Agent): Map<String, Any?> = mapOf(
+        "id" to agent.id,
+        "ouId" to agent.ouId,
+        "ouHandle" to agent.ouHandle,
+        "type" to agent.type,
+        "display" to agent.display,
+        "description" to agent.description,
+        "logoUrl" to agent.logoUrl,
+        "clientId" to agent.clientId,
+        "owner" to agent.owner?.let { encodeAgentOwner(it) },
+        "kind" to agent.kind,
+        "attributes" to agent.attributes,
+        "allowedUserTypes" to agent.allowedUserTypes,
+        "allowedAgentTypes" to agent.allowedAgentTypes,
+        "authFlowId" to agent.authFlowId,
+        "registrationFlowId" to agent.registrationFlowId,
+        "isRegistrationFlowEnabled" to agent.isRegistrationFlowEnabled,
+        "inboundAuthConfig" to agent.inboundAuthConfig?.map { inbound ->
+            mapOf("type" to inbound.type, "config" to inbound.config?.let { encodeOAuth2Config(it) })
+        },
+        "isReadOnly" to agent.isReadOnly,
+        "status" to agent.status?.let { encodeAccessStatus(it) },
+    )
+
+    private fun encodeBasicAgent(agent: BasicAgent): Map<String, Any?> = mapOf(
+        "id" to agent.id,
+        "ouId" to agent.ouId,
+        "ouHandle" to agent.ouHandle,
+        "type" to agent.type,
+        "display" to agent.display,
+        "description" to agent.description,
+        "logoUrl" to agent.logoUrl,
+        "clientId" to agent.clientId,
+        "kind" to agent.kind,
+        "attributes" to agent.attributes,
+        "isReadOnly" to agent.isReadOnly,
+        "status" to agent.status?.let { encodeAccessStatus(it) },
+    )
+
+    private fun encodeAgentOwner(owner: AgentOwner) = mapOf(
+        "id" to owner.id,
+        "idType" to owner.idType,
+        "isLocal" to owner.isLocal,
+    )
+
+    private fun encodeOAuth2Config(config: OAuth2Config) = mapOf(
+        "clientId" to config.clientId,
+        "redirectUris" to config.redirectUris,
+        "postLogoutRedirectUris" to config.postLogoutRedirectUris,
+        "grantTypes" to config.grantTypes,
+        "responseTypes" to config.responseTypes,
+        "tokenEndpointAuthMethod" to config.tokenEndpointAuthMethod,
+        "pkceRequired" to config.pkceRequired,
+        "publicClient" to config.publicClient,
+        "scopes" to config.scopes,
+    )
+
+    private fun encodeAccessStatus(status: AccessStatus) = mapOf(
+        "value" to status.value,
+        "details" to status.details?.let { details ->
+            mapOf(
+                "reason" to details.reason,
+                "since" to details.since,
+                "operatorNote" to details.operatorNote,
+                "lockedMethods" to details.lockedMethods?.map { mapOf("method" to it.method, "expiresAt" to it.expiresAt) },
+                "appliedBy" to details.appliedBy,
+            )
+        },
     )
 
     private fun encodeAttributeSchema(schema: AttributeSchema): Map<String, Any?> = mapOf(

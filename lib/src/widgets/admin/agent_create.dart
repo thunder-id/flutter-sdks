@@ -163,7 +163,7 @@ class _BaseAgentCreateState extends State<BaseAgentCreate> {
 class AgentCreate extends StatefulWidget {
   final String? ouId;
 
-  /// The agent's owner, passed through as `owner`.
+  /// The ID of the agent's owner, a user of this deployment.
   final String? owner;
   final ValueChanged<Agent>? onCreated;
   final VoidCallback? onCancel;
@@ -223,7 +223,7 @@ class _AgentCreateState extends AdminConnectedState<AgentCreate> {
               type: submission.type,
               description: submission.description,
               ouId: ouId,
-              owner: widget.owner,
+              owner: widget.owner == null ? null : AgentOwner(id: widget.owner!),
             ),
           ),
         );

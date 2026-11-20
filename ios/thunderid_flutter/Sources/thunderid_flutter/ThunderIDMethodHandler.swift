@@ -158,6 +158,39 @@ final class ThunderIDMethodHandler {
                 }
                 result(encodeFlowResponse(response))
 
+            // The native SDK sends the /users/me/agents calls with the user's token and refuses a
+            // blank agent ID before any request. Agents cross the channel in the server's JSON
+            // shape, so the Dart models read them as they read a management response.
+            case "getMeAgents":
+                let page = try await client.getMeAgents(
+                    kind: (args["kind"] as? String).map { AgentKind(rawValue: $0) },
+                    limit: args["limit"] as? Int,
+                    offset: args["offset"] as? Int
+                )
+                result(try encodeJSON(page))
+
+            case "getMeAgent":
+                result(try encodeJSON(try await client.getMeAgent(id: args["id"] as? String ?? "")))
+
+            case "updateMeAgent":
+                let request = buildUpdateMeAgentRequest(from: args["request"] as? [String: Any] ?? [:])
+                result(try encodeJSON(try await client.updateMeAgent(id: args["id"] as? String ?? "", request)))
+
+            case "deleteMeAgent":
+                try await client.deleteMeAgent(id: args["id"] as? String ?? "")
+                result(nil)
+
+            case "suspendMeAgent":
+                try await client.suspendMeAgent(id: args["id"] as? String ?? "")
+                result(nil)
+
+            case "unsuspendMeAgent":
+                try await client.unsuspendMeAgent(id: args["id"] as? String ?? "")
+                result(nil)
+
+            case "suspendAllMeAgents":
+                result(try encodeJSON(try await client.suspendAllMeAgents()))
+
             case "getFlowMeta":
                 let appId = args["applicationId"] as? String ?? ""
                 let language = args["language"] as? String ?? "en-US"
@@ -372,6 +405,19 @@ final class ThunderIDMethodHandler {
     }
 
     // MARK: - Encoders
+
+    private func buildUpdateMeAgentRequest(from map: [String: Any]) -> UpdateMeAgentRequest {
+        UpdateMeAgentRequest(
+            attributes: (map["attributes"] as? [String: Any] ?? [:]).mapValues { AnyCodable($0) },
+            description: map["description"] as? String,
+            grantTypes: map["grantTypes"] as? [String] ?? [],
+            redirectUris: map["redirectUris"] as? [String] ?? []
+        )
+    }
+
+    private func encodeJSON<Value: Encodable>(_ value: Value) throws -> Any {
+        try JSONSerialization.jsonObject(with: JSONEncoder().encode(value))
+    }
 
     // Claims are dynamic, so the whole set crosses the channel untouched, with decoded
     // values unwrapped into the types the platform channel codec can encode.

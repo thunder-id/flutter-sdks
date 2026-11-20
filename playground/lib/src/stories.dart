@@ -6,6 +6,7 @@ import 'package:thunderid_flutter/thunderid_flutter.dart';
 
 import 'admin_stories.dart';
 import 'custom_render_stories.dart';
+import 'personal_agent_stories.dart';
 import 'theme.dart';
 
 enum ControlKind { text, toggle, choice }
@@ -332,6 +333,7 @@ final List<ComponentDef> componentDefs = [
     code: (s) => 'ChangeCredential(\n  attribute: ${lit(s.text('attribute'))},\n'
         '${s.flag('showDivider') ? '' : '  showDivider: false,\n'}  onSuccess: () {},\n)',
   ),
+  ...personalAgentComponentDefs,
   ComponentDef(
     id: 'languageSwitcher',
     name: 'LanguageSwitcher',

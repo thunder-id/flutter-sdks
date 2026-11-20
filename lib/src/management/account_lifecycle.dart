@@ -158,14 +158,26 @@ const Map<String, List<AccountLifecycleAction>> _actionsByStatus = {
 /// [AccessStatusValue.active], and a status this SDK does not know offers nothing.
 /// [configuredFlows] are the flows the server configures, keyed by `flow` server-config key, as
 /// [AdministrationFlowOperations.resolveAdministrationFlows] returns them for
-/// `kind.flowConfigKeys.values`. Returns the actions most expected first.
+/// `kind.flowConfigKeys.values`. [appliedBy] is who holds a suspension, from
+/// [AccessStatusDetails.appliedBy]. The organization lifts only its own suspension, so a suspension
+/// held only by others, such as an agent's owner, offers the organization's own suspension instead of
+/// an unsuspend. `null` or empty reads as the organization's. Returns the actions most expected
+/// first.
 List<AccountLifecycleAction> getAccountLifecycleActions(
   AccountLifecycleSubjectKind kind,
   String? status,
-  Map<String, String> configuredFlows,
-) =>
-    [
-      for (final action in _actionsByStatus[status ?? AccessStatusValue.active] ?? const <AccountLifecycleAction>[])
-        if (kind.flowConfigKeys[action] case final configKey? when (configuredFlows[configKey] ?? '').isNotEmpty)
-          action,
-    ];
+  Map<String, String> configuredFlows, {
+  List<String>? appliedBy,
+}) {
+  final heldByOthersOnly = status == AccessStatusValue.suspended &&
+      (appliedBy?.isNotEmpty ?? false) &&
+      !appliedBy!.contains(SuspensionAppliedBy.organization);
+  final allowed = heldByOthersOnly
+      ? const [AccountLifecycleAction.suspend]
+      : _actionsByStatus[status ?? AccessStatusValue.active] ?? const <AccountLifecycleAction>[];
+  return [
+    for (final action in allowed)
+      if (kind.flowConfigKeys[action] case final configKey? when (configuredFlows[configKey] ?? '').isNotEmpty)
+        action,
+  ];
+}

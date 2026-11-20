@@ -13,6 +13,10 @@ import 'management/thunderid_management_client.dart';
 import 'models/attribute_verification.dart';
 import 'models/flow_models.dart';
 import 'models/http_request.dart';
+import 'models/management/agent.dart';
+import 'models/management/json_reader.dart';
+import 'models/management/management_page.dart';
+import 'models/personal_agent.dart';
 import 'models/sign_in_options.dart';
 import 'models/sign_out_options.dart';
 import 'models/thunderid_config.dart';
@@ -429,6 +433,72 @@ class ThunderIDClient {
       },
     });
     return EmbeddedFlowResponse.fromMap(result);
+  }
+
+  // ── Personal agents ─────────────────────────────────────────────────────
+
+  // The `/users/me/agents` calls are the signed-in user's own requests, so the native SDK sends
+  // them with the user's token, like the other `/users/me` calls, never through a management
+  // fetcher. It refuses a blank agent ID with [ThunderIDErrorCode.invalidInput] before any request,
+  // and maps a 403 to [ThunderIDErrorCode.forbidden] and a 404 to [ThunderIDErrorCode.notFound].
+
+  /// The agents the signed-in user owns in the organization unit their token names, from
+  /// `GET /users/me/agents`. [kind], one of [AgentKind], lists only the agents of that kind.
+  Future<ManagementPage<Agent>> getMeAgents({String? kind, int? limit, int? offset}) async {
+    _requireInitialized();
+    _refuseOnBackend('getMeAgents');
+    final result = await _channel.invokeMap('getMeAgents', {
+      if (kind != null) 'kind': kind,
+      if (limit != null) 'limit': limit,
+      if (offset != null) 'offset': offset,
+    });
+    return ManagementPage.fromJson(result, 'agents', (item) => Agent.fromJson(readMap(item)));
+  }
+
+  /// One of the signed-in user's agents, from `GET /users/me/agents/{id}`.
+  Future<Agent> getMeAgent(String id) async {
+    _requireInitialized();
+    _refuseOnBackend('getMeAgent');
+    return Agent.fromJson(readMap(await _channel.invokeMap('getMeAgent', {'id': id})));
+  }
+
+  /// Replaces the part of one of the signed-in user's personal agents its owner may change, through
+  /// `PUT /users/me/agents/{id}`. [PersonalAgentFormValues.updateRequest] builds [request].
+  Future<Agent> updateMeAgent(String id, UpdateMeAgentRequest request) async {
+    _requireInitialized();
+    _refuseOnBackend('updateMeAgent');
+    final result = await _channel.invokeMap('updateMeAgent', {'id': id, 'request': request.toJson()});
+    return Agent.fromJson(readMap(result));
+  }
+
+  /// Deletes one of the signed-in user's personal agents, through `DELETE /users/me/agents/{id}`.
+  Future<void> deleteMeAgent(String id) async {
+    _requireInitialized();
+    _refuseOnBackend('deleteMeAgent');
+    await _channel.invoke<void>('deleteMeAgent', {'id': id});
+  }
+
+  /// Places the signed-in user's own suspension on one of their agents. Any other suspension, such
+  /// as the organization's, is unaffected.
+  Future<void> suspendMeAgent(String id) async {
+    _requireInitialized();
+    _refuseOnBackend('suspendMeAgent');
+    await _channel.invoke<void>('suspendMeAgent', {'id': id});
+  }
+
+  /// Lifts the signed-in user's own suspension of one of their agents, leaving any other suspension
+  /// in force. [MeAgentSuspensionAction.available] tells whether the user holds one.
+  Future<void> unsuspendMeAgent(String id) async {
+    _requireInitialized();
+    _refuseOnBackend('unsuspendMeAgent');
+    await _channel.invoke<void>('unsuspendMeAgent', {'id': id});
+  }
+
+  /// Places the signed-in user's own suspension on every agent they own, at once.
+  Future<SuspendAllMeAgentsResponse> suspendAllMeAgents() async {
+    _requireInitialized();
+    _refuseOnBackend('suspendAllMeAgents');
+    return SuspendAllMeAgentsResponse.fromJson(readMap(await _channel.invokeMap('suspendAllMeAgents')));
   }
 
   // ── Flow Meta ─────────────────────────────────────────────────────────────

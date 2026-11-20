@@ -267,9 +267,9 @@ void main() {
       expect(types.items.single.displayName, 'Assistant');
 
       fetcher.respond = (_) => json({'id': 'a1', 'name': 'Bot', 'ouId': 'ou1', 'type': 'assistant'});
-      await client.createAgent(const CreateAgentRequest(name: 'Bot', ouId: 'ou1', type: 'assistant', owner: 'u1'));
+      await client.createAgent(const CreateAgentRequest(name: 'Bot', ouId: 'ou1', type: 'assistant', owner: AgentOwner(id: 'u1')));
       expect(fetcher.last.url.toString(), '$baseUrl/agents');
-      expect(jsonDecode(fetcher.last.body!), {'name': 'Bot', 'ouId': 'ou1', 'type': 'assistant', 'owner': 'u1'});
+      expect(jsonDecode(fetcher.last.body!), {'name': 'Bot', 'ouId': 'ou1', 'type': 'assistant', 'owner': {'id': 'u1'}});
 
       await client.getAgent('a1');
       expect(fetcher.last.url.toString(), '$baseUrl/agents/a1?include=display');

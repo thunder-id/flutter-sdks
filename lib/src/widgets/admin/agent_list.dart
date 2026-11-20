@@ -7,6 +7,7 @@ import '../../management/management_display.dart';
 import '../../management/management_filter.dart';
 import '../../models/management/agent.dart';
 import '../../models/management/management_page.dart';
+import '../../models/personal_agent.dart';
 import '../../models/preferences.dart';
 import '../../state/management_resources.dart';
 import '../../state/resource_notifiers.dart';
@@ -128,7 +129,16 @@ class BaseAgentList extends StatelessWidget {
                   onChange: onPageChange!,
                 ),
           columns: [
-            AdminColumn(header: ac.t('admin.agents.list.columns.name'), build: (agent) => Text(agent.name)),
+            AdminColumn(
+              header: ac.t('admin.agents.list.columns.name'),
+              build: (agent) => agent.isPersonal
+                  ? Wrap(
+                      spacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [Text(agent.name), AdminBadge(ac: ac, label: ac.t('admin.agents.kind.personal'))],
+                    )
+                  : Text(agent.name),
+            ),
             AdminColumn(header: ac.t('admin.agents.list.columns.type'), build: (agent) => Text(agent.type)),
             AdminColumn(
               header: ac.t('admin.agents.list.columns.client_id'),

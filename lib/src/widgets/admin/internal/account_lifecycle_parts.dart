@@ -209,9 +209,11 @@ class AdminLifecycleBinding {
 
   /// The actions to offer for an identity with [status]: none while off or until the configured
   /// flows are read.
-  List<AccountLifecycleAction> actions(String? status) {
+  List<AccountLifecycleAction> actions(String? status, {List<String>? appliedBy}) {
     final configured = flows.data;
-    return enabled && configured != null ? getAccountLifecycleActions(kind, status, configured) : const [];
+    return enabled && configured != null
+        ? getAccountLifecycleActions(kind, status, configured, appliedBy: appliedBy)
+        : const [];
   }
 
   bool get isRunning => mutation.isLoading;
