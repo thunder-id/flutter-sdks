@@ -155,6 +155,7 @@ extension AdministrationFlowOperations on ThunderIDManagementClient {
         method: 'POST',
         url: _serverUrl(operation, 'flow', id: 'execute'),
         body: {'flowId': flowId, 'inputs': inputs},
+        observe: false,
       ),
     );
     final status = readOptionalString(result, 'flowStatus');

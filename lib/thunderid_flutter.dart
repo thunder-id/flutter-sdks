@@ -74,6 +74,8 @@ export 'src/state/flow_variables_controller.dart';
 export 'src/state/granted_permissions.dart';
 export 'src/state/management_resources.dart';
 export 'src/state/resource_notifiers.dart';
+export 'src/telemetry/telemetry_config.dart';
+export 'src/telemetry/telemetry_navigator_observer.dart';
 export 'src/thunderid_client.dart';
 export 'src/widgets/account/change_credential.dart';
 export 'src/widgets/account/user_avatar.dart';

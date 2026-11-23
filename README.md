@@ -28,6 +28,34 @@ dependencies:
 
 The native iOS and Android ThunderID SDKs are pulled in automatically as transitive dependencies, no extra setup needed.
 
+## Usage telemetry
+
+Set `telemetry` to report how the app is used: screen views, the changes made through the SDK
+(creates, updates, deletes and other changes, and their failures), sign-ins and sign-outs, and
+links opened outside the app. It is off until `endpoint` is set. The names and path templates the
+SDK builds never carry a URL query or a request or response body. Route patterns given to the
+navigator observer and values passed to `track` are sent as given (a `track` value that looks
+personal is dropped), so pass patterns rather than concrete paths, and never pass user input.
+
+```dart
+ThunderIDConfig(
+  baseUrl: 'https://auth.example.com',
+  clientId: '<client-id>',
+  telemetry: TelemetryConfig(
+    endpoint: 'https://collector.example.com/v1/logs', // OTLP by default
+    prefix: 'acme',
+    consent: () => analyticsAllowed,
+  ),
+);
+
+MaterialApp(navigatorObservers: [TelemetryNavigatorObserver(client)], ...);
+client.openExternalLink(Uri.parse('https://example.com/pricing'));
+client.track('application.template-pick', {'type': 'spa'});
+```
+
+`format: TelemetryFormat.mapping` with a `TelemetryMapping` template reshapes events for an API
+that does not take OpenTelemetry.
+
 ## Playground
 
 [`playground/`](playground/README.md) is a Flutter app that runs every SDK capability and widget against

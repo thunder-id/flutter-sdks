@@ -359,8 +359,15 @@ class ThunderIDMethodHandler(private val context: Context) {
         "data" to r.data?.let { encodeFlowStepData(it) },
         "assertion" to r.assertion, "failureReason" to r.failureReason,
         "challengeToken" to r.challengeToken, "expiresIn" to r.expiresIn,
-        "error" to r.error?.message?.let {
-            mapOf("message" to mapOf("key" to it.key, "defaultValue" to it.defaultValue, "params" to it.params))
+        // The error code goes through with the message, so the Dart side can report a well-formed
+        // code for a failed sign-in without ever reading the message.
+        "error" to r.error?.let { error ->
+            mapOf(
+                "code" to error.code,
+                "message" to error.message?.let {
+                    mapOf("key" to it.key, "defaultValue" to it.defaultValue, "params" to it.params)
+                },
+            )
         }
     )
 
