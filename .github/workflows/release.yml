@@ -85,20 +85,37 @@ jobs:
           sed -i "s/^version '.*'/version '$new_version'/" android/build.gradle
           echo "version=$new_version" >> "$GITHUB_OUTPUT"
 
+      # The CHANGELOG entry is GitHub's generated release notes for the new version: the pull
+      # requests merged since the latest release, grouped by their `Type/*` label as configured in
+      # .github/release.yml (pr-label-check.yml makes every pull request carry one). The GitHub
+      # release below uses the same notes.
       - name: 📝 Update CHANGELOG
+        env:
+          GH_TOKEN: ${{ secrets.THUNDERID_AUTOMATION_BOT }}
+          VERSION: ${{ steps.bump.outputs.version }}
+          RELEASE_REF: ${{ github.ref_name }}
         run: |
-          previous_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          # The previous release, set explicitly: left out, GitHub guesses it and can skip one.
+          args=(-f "tag_name=v${VERSION}" -f "target_commitish=${RELEASE_REF}")
+          previous=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name 2>/dev/null || true)
+          if [ -n "$previous" ]; then args+=(-f "previous_tag_name=${previous}"); fi
+          notes=$(gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" "${args[@]}" --jq .body)
+          # The GitHub release uses the notes as they are.
+          printf '%s\n' "$notes" > "$RUNNER_TEMP/release-notes.md"
           {
-            echo "## ${{ steps.bump.outputs.version }}"
+            echo "## ${VERSION}"
             echo
-            if [ -n "$previous_tag" ]; then
-              git log "$previous_tag"..HEAD --no-merges --pretty=format:"- %s"
-            else
-              git log --no-merges --pretty=format:"- %s"
-            fi
+            # Keep the sections and the compare link; drop the generator comment, the top-level
+            # "What's Changed" heading and the "New Contributors" section.
+            awk '
+              /^<!--/ { next }
+              /^## What.s Changed/ { next }
+              /^## New Contributors/ { skip = 1; next }
+              /^\*\*Full Changelog\*\*/ { skip = 0 }
+              !skip
+            ' <<< "$notes" | sed -e '/./,$!d'
             echo
-            echo
-            [ -f CHANGELOG.md ] && cat CHANGELOG.md
+            if [ -f CHANGELOG.md ]; then cat CHANGELOG.md; fi
           } > CHANGELOG.md.new
           mv CHANGELOG.md.new CHANGELOG.md
 
@@ -126,4 +143,4 @@ jobs:
         run: |
           gh release create "v${VERSION}" \
             --title "ThunderID Flutter SDK v${VERSION}" \
-            --generate-notes
+            --notes-file "$RUNNER_TEMP/release-notes.md"
