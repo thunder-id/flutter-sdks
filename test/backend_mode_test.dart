@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:thunderid_flutter/src/models/backend.dart';
 import 'package:thunderid_flutter/src/models/flow_models.dart';
 import 'package:thunderid_flutter/src/models/http_request.dart';
+import 'package:thunderid_flutter/src/models/organization_unit_switch.dart';
 import 'package:thunderid_flutter/src/models/thunderid_config.dart';
 import 'package:thunderid_flutter/src/models/thunderid_error.dart';
 import 'package:thunderid_flutter/src/models/token_exchange_config.dart';
@@ -528,6 +529,117 @@ void main() {
       expect(response.statusCode, 401);
       expect(server.to(dpUrl).single.header('Authorization'), isNull);
       expect(server.to('$_backend/api/auth/token'), isEmpty);
+    });
+  });
+
+  group('organization unit switch', () {
+    const switchUrl = '$_backend/api/auth/switch';
+    final switchedSession = _json(200, {
+      'isSignedIn': true,
+      'user': {'sub': 'user-1', 'ouId': 'ou-2'},
+    });
+
+    test('posts the unit in the query and as a JSON body, then reads the session again', () async {
+      await signedIn();
+      server.on('POST', switchUrl, [const HttpResponseData(statusCode: 204)]);
+      server.on('GET', '$_backend/api/auth/session', [switchedSession]);
+
+      final result = await client.switchOrganizationUnit('ou-2');
+
+      final request = server.to(switchUrl).single;
+      expect(request.method, 'POST');
+      expect(request.url.queryParameters['ouId'], 'ou-2');
+      expect(jsonDecode(request.body!), {'ouId': 'ou-2'});
+      expect(request.header('Content-Type'), 'application/json');
+      expect(request.header('X-Session-Handle'), 'handle-1');
+      expect(result, isA<OrganizationUnitSwitched>());
+      expect((result as OrganizationUnitSwitched).user.claims['ouId'], 'ou-2');
+      expect((await client.getUser()).claims['ouId'], 'ou-2');
+      expect(log.any((c) => c.method == 'openAuthSession'), false);
+    });
+
+    test('session_expired refreshes once and retries', () async {
+      await signedIn();
+      server.on('POST', switchUrl, [
+        _json(401, {'error': 'session_expired'}),
+        const HttpResponseData(statusCode: 204),
+      ]);
+
+      expect(await client.switchOrganizationUnit('ou-2'), isA<OrganizationUnitSwitched>());
+      expect(server.to('$_backend/api/auth/refresh'), hasLength(1));
+      expect(server.to(switchUrl), hasLength(2));
+    });
+
+    test('a 401 with an error code of its own signs out and signs in to the unit', () async {
+      await signedIn();
+      var signOuts = 0;
+      client.onSignOut(() => signOuts++);
+      server.on('POST', switchUrl, [_json(401, {'error': 'unauthorized'})]);
+
+      final result = await client.switchOrganizationUnit('ou-2');
+      await pumpEventQueue();
+
+      expect(signOuts, 1);
+      expect(server.to('$_backend/api/auth/refresh'), isEmpty);
+      final open = log.lastWhere((c) => c.method == 'openAuthSession');
+      final url = Uri.parse((open.arguments as Map<Object?, Object?>)['url']! as String);
+      expect('${url.origin}${url.path}', '$_backend/api/auth/signin');
+      expect(url.queryParameters['ouId'], 'ou-2');
+      expect(result, isA<OrganizationUnitSwitched>());
+      expect(await client.isSignedIn(), true);
+    });
+
+    test('interaction_required signs in to the unit, unless the browser is ruled out', () async {
+      await signedIn();
+      server.on('POST', switchUrl, [_json(400, {'error': 'interaction_required'})]);
+
+      await expectLater(
+        client.switchOrganizationUnit('ou-2', options: const SwitchOrganizationUnitOptions(useBrowser: false)),
+        throwsCode(ThunderIDErrorCode.authenticationFailed),
+      );
+      expect(log.any((c) => c.method == 'openAuthSession'), false);
+      expect(await client.isSignedIn(), true);
+
+      expect(await client.switchOrganizationUnit('ou-2'), isA<OrganizationUnitSwitched>());
+      final open = log.lastWhere((c) => c.method == 'openAuthSession');
+      expect((open.arguments as Map<Object?, Object?>)['url'], contains('ouId=ou-2'));
+    });
+
+    test('unauthorized_client reports the unit unavailable and keeps the session', () async {
+      await signedIn();
+      server.on('POST', switchUrl, [_json(403, {'error': 'unauthorized_client'})]);
+
+      await expectLater(
+        client.switchOrganizationUnit('ou-2'),
+        throwsCode(ThunderIDErrorCode.organizationUnitUnavailable),
+      );
+      expect(log.any((c) => c.method == 'openAuthSession'), false);
+      expect(await client.isSignedIn(), true);
+      expect(secureStore['backend_session_handle'], 'handle-1');
+    });
+
+    test('any other refusal fails the switch and keeps the session', () async {
+      await signedIn();
+      server.on('POST', switchUrl, [_json(400, {'error': 'invalid_request'})]);
+
+      await expectLater(client.switchOrganizationUnit('ou-2'), throwsCode(ThunderIDErrorCode.authenticationFailed));
+      expect(await client.isSignedIn(), true);
+    });
+
+    test('a session that ends during the switch fails it instead of reporting an empty user', () async {
+      await signedIn();
+      server.on('POST', switchUrl, [const HttpResponseData(statusCode: 204)]);
+      server.on('GET', '$_backend/api/auth/session', [_json(401, {'error': 'login_required'})]);
+
+      await expectLater(client.switchOrganizationUnit('ou-2'), throwsCode(ThunderIDErrorCode.sessionExpired));
+      expect(await client.isSignedIn(), false);
+    });
+
+    test('an empty unit is refused before any call', () async {
+      await signedIn();
+
+      await expectLater(client.switchOrganizationUnit(' '), throwsCode(ThunderIDErrorCode.invalidInput));
+      expect(server.to(switchUrl), isEmpty);
     });
   });
 

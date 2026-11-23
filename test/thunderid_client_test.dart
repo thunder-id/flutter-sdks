@@ -4,6 +4,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:thunderid_flutter/src/models/flow_models.dart';
+import 'package:thunderid_flutter/src/models/organization_unit_switch.dart';
 import 'package:thunderid_flutter/src/models/thunderid_config.dart';
 import 'package:thunderid_flutter/src/models/thunderid_error.dart';
 import 'package:thunderid_flutter/src/models/user.dart';
@@ -66,6 +67,21 @@ void main() {
               'flowId': 'flow-1',
               'flowStatus': 'COMPLETE',
               'assertion': 'mock-assertion',
+            };
+          case 'switchOrganizationUnit':
+            final args = call.arguments as Map<Object?, Object?>;
+            if (args['ouId'] == 'ou-gone') {
+              throw PlatformException(code: 'ORGANIZATION_UNIT_UNAVAILABLE', message: 'unavailable');
+            }
+            if (args['useBrowser'] == false) {
+              return <Object?, Object?>{
+                'status': 'signInRequired',
+                'response': <Object?, Object?>{'flowId': 'flow-2', 'flowStatus': 'INCOMPLETE'},
+              };
+            }
+            return <Object?, Object?>{
+              'status': 'switched',
+              'user': <Object?, Object?>{'sub': 'user-1', 'ouId': args['ouId']},
             };
           default:
             return null;
@@ -316,6 +332,40 @@ void main() {
           applicationId: 'app-1',
         ),
         throwsA(isA<IAMException>().having((e) => e.code, 'code', ThunderIDErrorCode.federatedAuthCancelled)),
+      );
+    });
+  });
+
+  group('switchOrganizationUnit', () {
+    test('switches through the native SDK with a browser by default', () async {
+      await client.initialize(const ThunderIDConfig(baseUrl: 'https://localhost:8090', clientId: 'client-1'));
+
+      final result = await client.switchOrganizationUnit('ou-2');
+
+      final call = log.lastWhere((c) => c.method == 'switchOrganizationUnit');
+      expect(call.arguments, {'ouId': 'ou-2', 'useBrowser': true});
+      expect(result, isA<OrganizationUnitSwitched>());
+      expect((result as OrganizationUnitSwitched).user.claims['ouId'], 'ou-2');
+    });
+
+    test('runs the app-native flow when an applicationId is configured', () async {
+      await client.initialize(const ThunderIDConfig(baseUrl: 'https://localhost:8090', applicationId: 'app-1'));
+
+      final result = await client.switchOrganizationUnit('ou-2');
+
+      expect(log.lastWhere((c) => c.method == 'switchOrganizationUnit').arguments, {'ouId': 'ou-2', 'useBrowser': false});
+      expect(result, isA<OrganizationUnitSwitchSignInRequired>());
+      expect((result as OrganizationUnitSwitchSignInRequired).response.flowId, 'flow-2');
+    });
+
+    test('maps an unavailable unit to its error code', () async {
+      await client.initialize(const ThunderIDConfig(baseUrl: 'https://localhost:8090'));
+
+      await expectLater(
+        client.switchOrganizationUnit('ou-gone'),
+        throwsA(
+          isA<IAMException>().having((e) => e.code, 'code', ThunderIDErrorCode.organizationUnitUnavailable),
+        ),
       );
     });
   });

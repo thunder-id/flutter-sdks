@@ -13,6 +13,7 @@ import 'management/thunderid_management_client.dart';
 import 'models/attribute_verification.dart';
 import 'models/flow_models.dart';
 import 'models/http_request.dart';
+import 'models/organization_unit_switch.dart';
 import 'models/sign_in_options.dart';
 import 'models/sign_out_options.dart';
 import 'models/thunderid_config.dart';
@@ -206,11 +207,53 @@ class ThunderIDClient {
   Future<User> signInWithRedirect({SignInOptions? options}) async {
     _requireInitialized();
     final url = await buildSignInUrl(options: options);
-    final callbackUrl = await _channel.invoke<String>('openAuthSession', {'url': url});
-    if (callbackUrl == null || callbackUrl.isEmpty) {
-      throw const IAMException(ThunderIDErrorCode.invalidRedirectUri, 'The browser session returned no callback');
+    return handleRedirectCallback(await _openAuthSession(url));
+  }
+
+  // ── Organization units ────────────────────────────────────────────────────
+
+  /// Signs in again bounded to the organization unit [ouId], reusing the server's SSO session where
+  /// the user can sign in there. The first way that applies is used:
+  ///
+  /// 1. When sign-in runs on a backend, the backend's `ouSwitch` endpoint switches the session it
+  ///    holds, with no browser, and the session is read again. When the backend needs the user
+  ///    (`interaction_required`, `login_required`, `consent_required`,
+  ///    `account_selection_required`, or a `401`), a sign-in to the unit through the backend opens
+  ///    in a system browser session instead, unless [SwitchOrganizationUnitOptions.useBrowser] is
+  ///    `false`.
+  /// 2. Otherwise the native SDK switches: with a device secret from a `device_sso` sign-in, it is
+  ///    exchanged at `{baseUrl}/ou/{ouId}/oauth2/token`, with no browser; then, as
+  ///    [SwitchOrganizationUnitOptions.useBrowser] says, a redirect sign-in bounded to the unit or
+  ///    the application's `AUTHENTICATION` flow in app-native mode, which returns
+  ///    [OrganizationUnitSwitchSignInRequired] when the flow needs the user.
+  ///
+  /// On success the session belongs to the unit and the user is read again. On failure the previous
+  /// session stays as it was, except that a backend reporting `login_required` has ended it. An
+  /// unknown unit and a unit the application cannot be used from both fail with
+  /// [ThunderIDErrorCode.organizationUnitUnavailable].
+  ///
+  /// ```dart
+  /// final result = await client.switchOrganizationUnit('ou-123');
+  /// if (result is OrganizationUnitSwitched) print(result.user.sub);
+  /// ```
+  Future<OrganizationUnitSwitchResult> switchOrganizationUnit(
+    String ouId, {
+    SwitchOrganizationUnitOptions options = const SwitchOrganizationUnitOptions(),
+  }) async {
+    _requireInitialized();
+    if (ouId.trim().isEmpty) {
+      throw const IAMException(ThunderIDErrorCode.invalidInput, 'ouId must not be empty');
     }
-    return handleRedirectCallback(callbackUrl);
+    final backend = _backend;
+    if (backend != null) return OrganizationUnitSwitched(await _switchOnBackend(backend, ouId, options));
+
+    final applicationId = options.applicationId;
+    final result = await _channel.invokeMap('switchOrganizationUnit', {
+      'ouId': ouId,
+      'useBrowser': options.useBrowser ?? (applicationId ?? _config?.applicationId) == null,
+      if (applicationId != null) 'applicationId': applicationId,
+    });
+    return OrganizationUnitSwitchResult.fromMap(result.cast<String, dynamic>());
   }
 
   /// Signs out. When sign-in runs on a backend, the backend ends the session, the session handle
@@ -525,6 +568,53 @@ class ThunderIDClient {
     // Read the session now, so the client reports loading until it is known whether the user is
     // signed in. A failed read is retried by the next call that needs the session.
     unawaited(backend.getSession().then<void>((_) {}, onError: (Object _) {}));
+  }
+
+  /// OAuth errors that mean the server needs the user, so a switch on a backend signs in instead.
+  static const Set<String> _interactionErrors = {
+    'interaction_required',
+    'login_required',
+    'consent_required',
+    'account_selection_required',
+  };
+
+  /// Switches at the backend's `ouSwitch` endpoint, then reads the session again. When the backend
+  /// needs the user, signs in to the unit through the backend in a system browser session instead.
+  Future<User> _switchOnBackend(
+    BackendClient backend,
+    String ouId,
+    SwitchOrganizationUnitOptions options,
+  ) async {
+    final refusal = await backend.switchOrganizationUnit(ouId);
+    if (refusal == null) {
+      final session = await backend.getSession(reload: true);
+      if (!session.isSignedIn) {
+        // The backend answered the switch but no longer reports a session, so nothing was switched to.
+        throw const IAMException(ThunderIDErrorCode.sessionExpired, 'The backend session ended during the switch');
+      }
+      return User(session.user ?? const {});
+    }
+
+    final error = refusal.error;
+    if (error != null && _interactionErrors.contains(error) && options.useBrowser != false) {
+      final url = await backend.buildSignInUrl(organizationUnitId: ouId);
+      return handleRedirectCallback(await _openAuthSession(url));
+    }
+    throw IAMException(
+      error == 'unauthorized_client'
+          ? ThunderIDErrorCode.organizationUnitUnavailable
+          : ThunderIDErrorCode.authenticationFailed,
+      'The backend refused the switch: ${error ?? 'no error'}',
+    );
+  }
+
+  /// Opens [url] in a system browser session and returns the callback URL it comes back to.
+  Future<String> _openAuthSession(String url) async {
+    final callbackUrl = await _channel.invoke<String>('openAuthSession', {'url': url});
+    if (callbackUrl == null || callbackUrl.isEmpty) {
+      throw const IAMException(ThunderIDErrorCode.invalidRedirectUri, 'The browser session returned no callback');
+    }
+    return callbackUrl;
   }
 
   void _notifySignedOut() {

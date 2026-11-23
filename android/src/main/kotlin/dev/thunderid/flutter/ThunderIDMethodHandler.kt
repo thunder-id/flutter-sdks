@@ -6,6 +6,9 @@ import android.net.Uri
 import io.flutter.plugin.common.MethodChannel.Result
 import dev.thunderid.android.*
 import dev.thunderid.android.api.auth.FederatedAuthSession
+import dev.thunderid.android.api.auth.OrganizationUnitSwitchResult
+import dev.thunderid.android.api.auth.SwitchOrganizationUnitOptions
+import dev.thunderid.android.api.auth.customTabBrowser
 import dev.thunderid.android.api.auth.PasskeyClient
 import kotlinx.coroutines.CancellationException
 import java.security.MessageDigest
@@ -124,6 +127,22 @@ class ThunderIDMethodHandler(private val context: Context) {
                     val url = args["url"] as? String ?: ""
                     val user = client.handleRedirectCallback(url)
                     result.success(encodeUser(user))
+                }
+                "switchOrganizationUnit" -> {
+                    val ouId = args["ouId"] as? String ?: ""
+                    val useBrowser = args["useBrowser"] as? Boolean ?: true
+                    val options = SwitchOrganizationUnitOptions(
+                        browser = if (useBrowser) customTabBrowser(activity ?: context) else null,
+                        applicationId = args["applicationId"] as? String,
+                    )
+                    result.success(
+                        when (val outcome = client.switchOrganizationUnit(ouId, options)) {
+                            is OrganizationUnitSwitchResult.Switched ->
+                                mapOf("status" to "switched", "user" to encodeUser(outcome.user))
+                            is OrganizationUnitSwitchResult.SignInRequired ->
+                                mapOf("status" to "signInRequired", "response" to encodeFlowResponse(outcome.response))
+                        }
+                    )
                 }
                 "signOut" -> {
                     result.success(client.signOut())

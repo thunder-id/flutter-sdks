@@ -60,6 +60,7 @@ export 'src/models/management/server_config.dart';
 export 'src/models/management/sharing_policy.dart';
 export 'src/models/management/translation.dart';
 export 'src/models/management/variable.dart';
+export 'src/models/organization_unit_switch.dart';
 export 'src/models/preferences.dart';
 export 'src/models/sign_in_options.dart';
 export 'src/models/sign_out_options.dart';
