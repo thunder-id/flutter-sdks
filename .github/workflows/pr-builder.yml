@@ -139,23 +139,27 @@ jobs:
           cache: true
 
       # The sample lives in thunder-id/samples; this fetches it and points it at this checkout.
+      # The script prints the prepared sample's directory, wherever the samples repository keeps it.
       - name: 📥 Fetch Quickstart Sample
-        run: tests/e2e/scripts/prepare-sample.sh
+        id: sample
+        run: |
+          dir="$(tests/e2e/scripts/prepare-sample.sh)"
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
 
       - name: 📦 Get Dependencies
-        working-directory: tests/e2e/.samples/quickstarts/flutter
+        working-directory: ${{ steps.sample.outputs.dir }}
         run: flutter pub get
 
       - name: 🔐 Create Sample .env
-        working-directory: tests/e2e/.samples/quickstarts/flutter
+        working-directory: ${{ steps.sample.outputs.dir }}
         run: cp .env.example .env
 
       - name: 🔍 Analyze Quickstart Sample
-        working-directory: tests/e2e/.samples/quickstarts/flutter
+        working-directory: ${{ steps.sample.outputs.dir }}
         run: flutter analyze
 
       - name: 🔨 Build Quickstart Sample
-        working-directory: tests/e2e/.samples/quickstarts/flutter
+        working-directory: ${{ steps.sample.outputs.dir }}
         run: flutter build apk --debug
 
   build-playground:

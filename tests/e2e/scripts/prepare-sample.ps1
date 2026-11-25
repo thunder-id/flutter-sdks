@@ -38,16 +38,26 @@ function Invoke-Git {
 $SamplesRepo = Get-EnvOrDefault 'THUNDERID_SAMPLES_REPO' 'https://github.com/thunder-id/samples.git'
 $SamplesRef  = Get-EnvOrDefault 'THUNDERID_SAMPLES_REF' 'main'
 $SamplesDir  = Get-EnvOrDefault 'THUNDERID_SAMPLES_DIR' ''
+# The quickstart's path in the samples repository. A samples checkout from before the quickstarts
+# were renamed has it at the bare platform name, so an older THUNDERID_SAMPLES_REF still works.
+$SamplePaths = @('quickstarts/quickstart-flutter', 'quickstarts/flutter')
+
+# Returns the first of $SamplePaths that holds a sample under the given samples checkout.
+function Find-Sample([string]$Root) {
+    foreach ($path in $SamplePaths) {
+        if (Test-Path (Join-Path (Join-Path $Root $path) 'pubspec.yaml')) { return $path }
+    }
+    throw "No Flutter Quickstart sample at $($SamplePaths -join ', ') in $Root."
+}
 
 if ($SamplesDir) {
-    $SourceDir = Join-Path (Resolve-Path $SamplesDir).Path 'quickstarts/flutter'
-    if (-not (Test-Path $SourceDir)) {
-        throw "No Flutter Quickstart sample at $SourceDir."
-    }
+    $SourceRoot = (Resolve-Path $SamplesDir).Path
+    $SamplePath = Find-Sample $SourceRoot
+    $SourceDir = Join-Path $SourceRoot $SamplePath
     $SamplesDir = Join-Path $E2eDir '.samples'
     Write-Host "==> Copying the sample from $SourceDir"
     if (Test-Path $SamplesDir) { Remove-Item -Recurse -Force $SamplesDir }
-    $Target = Join-Path $SamplesDir 'quickstarts/flutter'
+    $Target = Join-Path $SamplesDir $SamplePath
     New-Item -ItemType Directory -Force -Path $Target | Out-Null
     Get-ChildItem -Force $SourceDir |
         Where-Object { $_.Name -notin @('build', '.dart_tool', 'pubspec_overrides.yaml') } |
@@ -62,12 +72,10 @@ if ($SamplesDir) {
     Invoke-Git -C $SamplesDir checkout -q --force FETCH_HEAD
     # Drop anything a previous run left behind (build output, a copied sample).
     Invoke-Git -C $SamplesDir clean -q -f -d -x
+    $SamplePath = Find-Sample $SamplesDir
 }
 
-$SampleDir = Join-Path $SamplesDir 'quickstarts/flutter'
-if (-not (Test-Path (Join-Path $SampleDir 'pubspec.yaml'))) {
-    throw "No Flutter Quickstart sample at $SampleDir."
-}
+$SampleDir = Join-Path $SamplesDir $SamplePath
 
 Write-Host "==> Pointing the sample at the local SDK in $RepoRoot"
 # pubspec_overrides.yaml takes precedence over the sample's pub.dev constraint without editing

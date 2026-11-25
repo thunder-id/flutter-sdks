@@ -18,19 +18,29 @@ REPO_ROOT="$(cd "$E2E_DIR/../.." && pwd)"
 
 SAMPLES_REPO="${THUNDERID_SAMPLES_REPO:-https://github.com/thunder-id/samples.git}"
 SAMPLES_REF="${THUNDERID_SAMPLES_REF:-main}"
+# The quickstart's path in the samples repository. A samples checkout from before the quickstarts
+# were renamed has it at the bare platform name, so an older THUNDERID_SAMPLES_REF still works.
+SAMPLE_PATHS=("quickstarts/quickstart-flutter" "quickstarts/flutter")
+
+# Prints the first of SAMPLE_PATHS that holds a sample under the given samples checkout.
+find_sample() {
+    local path
+    for path in "${SAMPLE_PATHS[@]}"; do
+        if [ -f "$1/$path/pubspec.yaml" ]; then echo "$path"; return 0; fi
+    done
+    echo "ERROR: no Flutter Quickstart sample at ${SAMPLE_PATHS[*]} in $1." >&2
+    return 1
+}
 
 if [ -n "${THUNDERID_SAMPLES_DIR:-}" ]; then
-    source_dir="$(cd "$THUNDERID_SAMPLES_DIR" && pwd)/quickstarts/flutter"
+    source_root="$(cd "$THUNDERID_SAMPLES_DIR" && pwd)"
+    sample_path="$(find_sample "$source_root")"
     samples_dir="$E2E_DIR/.samples"
-    echo "==> Copying the sample from $source_dir" >&2
-    if [ ! -d "$source_dir" ]; then
-        echo "ERROR: no Flutter Quickstart sample at $source_dir." >&2
-        exit 1
-    fi
+    echo "==> Copying the sample from $source_root/$sample_path" >&2
     rm -rf "$samples_dir"
-    mkdir -p "$samples_dir/quickstarts"
+    mkdir -p "$samples_dir/$sample_path"
     rsync -a --exclude build --exclude .dart_tool --exclude pubspec_overrides.yaml \
-        "$source_dir/" "$samples_dir/quickstarts/flutter/"
+        "$source_root/$sample_path/" "$samples_dir/$sample_path/"
 else
     samples_dir="$E2E_DIR/.samples"
     echo "==> Fetching $SAMPLES_REPO@$SAMPLES_REF into $samples_dir" >&2
@@ -41,13 +51,10 @@ else
     git -C "$samples_dir" checkout -q --force FETCH_HEAD
     # Drop anything a previous run left behind (build output, a copied sample).
     git -C "$samples_dir" clean -q -f -d -x
+    sample_path="$(find_sample "$samples_dir")"
 fi
 
-sample_dir="$samples_dir/quickstarts/flutter"
-if [ ! -f "$sample_dir/pubspec.yaml" ]; then
-    echo "ERROR: no Flutter Quickstart sample at $sample_dir." >&2
-    exit 1
-fi
+sample_dir="$samples_dir/$sample_path"
 
 echo "==> Pointing the sample at the local SDK in $REPO_ROOT" >&2
 # pubspec_overrides.yaml takes precedence over the sample's pub.dev constraint without editing
