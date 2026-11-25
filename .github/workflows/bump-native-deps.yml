@@ -93,5 +93,6 @@ jobs:
               --title "Bump native SDK dependencies" \
               --body "${{ steps.apply.outputs.summary }}" \
               --base "${{ github.event.repository.default_branch }}" \
-              --head "$branch"
+              --head "$branch" \
+              --label "Type/Improvement"
           fi
