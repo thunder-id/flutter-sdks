@@ -28,6 +28,24 @@ dependencies:
 
 The native iOS and Android ThunderID SDKs are pulled in automatically as transitive dependencies, no extra setup needed.
 
+## Sign-in through a backend
+
+Setting `endpoints.backend` hands sign-in to a backend the app owns (the Backend for Frontend pattern of RFC 10017). The backend runs the OAuth flow and keeps the tokens, and the app's API calls go through its proxy.
+
+```dart
+ThunderIDConfig(
+  baseUrl: 'https://app.example.com', // the backend
+  afterSignInUrl: 'com.example.app://callback',
+  endpoints: EndpointsConfig(
+    backend: BackendEndpoints(proxy: '/api'),
+  ),
+)
+```
+
+- `baseUrl` is the backend, and must use HTTPS.
+- Each endpoint (`signIn`, `session`, `checkSession`, `refresh`, `signOut`, `proxy`, `token`) is a path that resolves against `baseUrl`, and defaults to one under `/api/auth`. An absolute HTTPS URL is used as it is; `http://` is refused.
+- `proxy` is the app's API base. A path the app sends with `httpRequest`, and every management operation, goes to `baseUrl` + `proxy` + the path, with no access token: the backend attaches it and decides which API the request reaches.
+
 ## Playground
 
 [`playground/`](playground/README.md) is a Flutter app that runs every SDK capability and widget against
