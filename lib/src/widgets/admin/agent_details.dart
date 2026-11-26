@@ -145,7 +145,7 @@ class BaseAgentDetails extends StatelessWidget {
             ac: ac,
             items: [
               (ac.t('admin.agents.details.type'), Text(agent.type)),
-              (ac.t('admin.agents.details.owner'), Text(agent.owner ?? ac.t('admin.agents.details.no_owner'))),
+              (ac.t('admin.agents.details.owner'), Text(agent.owner?.id ?? ac.t('admin.agents.details.no_owner'))),
               (ac.t('admin.common.columns.organization_unit'), Text(agent.ouHandle ?? agent.ouId)),
               if (status != null)
                 (

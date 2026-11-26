@@ -266,10 +266,21 @@ void main() {
       expect(fetcher.last.url.toString(), '$baseUrl/agent-types?include=display');
       expect(types.items.single.displayName, 'Assistant');
 
-      fetcher.respond = (_) => json({'id': 'a1', 'name': 'Bot', 'ouId': 'ou1', 'type': 'assistant'});
-      await client.createAgent(const CreateAgentRequest(name: 'Bot', ouId: 'ou1', type: 'assistant', owner: 'u1'));
+      const owner = {'id': 'jane@example.com', 'idType': 'email', 'isLocal': false};
+      fetcher.respond = (_) => json({'id': 'a1', 'name': 'Bot', 'ouId': 'ou1', 'type': 'assistant', 'owner': owner});
+      final created = await client.createAgent(
+        const CreateAgentRequest(
+          name: 'Bot',
+          ouId: 'ou1',
+          type: 'assistant',
+          owner: AgentOwner(id: 'jane@example.com', idType: AgentOwnerIdType.email, isLocal: false),
+        ),
+      );
       expect(fetcher.last.url.toString(), '$baseUrl/agents');
-      expect(jsonDecode(fetcher.last.body!), {'name': 'Bot', 'ouId': 'ou1', 'type': 'assistant', 'owner': 'u1'});
+      expect(jsonDecode(fetcher.last.body!), {'name': 'Bot', 'ouId': 'ou1', 'type': 'assistant', 'owner': owner});
+      expect(created.owner?.id, 'jane@example.com');
+      expect(created.owner?.idType, AgentOwnerIdType.email);
+      expect(created.owner?.isLocal, isFalse);
 
       await client.getAgent('a1');
       expect(fetcher.last.url.toString(), '$baseUrl/agents/a1?include=display');

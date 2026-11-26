@@ -163,8 +163,9 @@ class _BaseAgentCreateState extends State<BaseAgentCreate> {
 class AgentCreate extends StatefulWidget {
   final String? ouId;
 
-  /// The agent's owner, passed through as `owner`.
-  final String? owner;
+  /// The person responsible for the agent, sent as is. Defaults to the server's choice, usually
+  /// the creator.
+  final AgentOwner? owner;
   final ValueChanged<Agent>? onCreated;
   final VoidCallback? onCancel;
   final String? title;

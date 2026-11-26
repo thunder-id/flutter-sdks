@@ -967,5 +967,19 @@ void main() {
       expect(const UpdateAgentRequest(name: 'Bot').toJson(), {'name': 'Bot'});
       expect(const UpdateAgentRequest(delegated: true).toJson(), {'delegated': true});
     });
+
+    test('UpdateAgentRequest sends only the owner fields that are set', () {
+      expect(const UpdateAgentRequest(owner: AgentOwner(id: 'u1')).toJson(), {
+        'owner': {'id': 'u1'},
+      });
+    });
+
+    test('an agent reads an owner without an id, or a string owner, as none', () {
+      Agent read(Object? owner) => Agent.fromJson({'id': 'a1', 'ouId': 'ou1', 'type': 't', 'owner': owner});
+
+      expect(read({'idType': 'email'}).owner, isNull);
+      expect(read('u1').owner, isNull);
+      expect(read({'id': 'u1', 'idType': 'passport'}).owner?.idType, isNull);
+    });
   });
 }
