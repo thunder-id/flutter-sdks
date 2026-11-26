@@ -5,7 +5,7 @@ ThunderID server on an iOS Simulator. The flows live in [`flows/`](./flows); the
 scripts alongside them get a server into the right state to run against.
 
 The sample itself lives in the samples repository at
-[`quickstarts/flutter`](https://github.com/thunder-id/samples/tree/main/quickstarts/flutter).
+[`quickstarts/quickstart-flutter`](https://github.com/thunder-id/samples/tree/main/quickstarts/quickstart-flutter).
 [`scripts/prepare-sample.sh`](./scripts/prepare-sample.sh) (or
 [`scripts/prepare-sample.ps1`](./scripts/prepare-sample.ps1) on Windows) fetches it into
 `tests/e2e/.samples` and writes a `pubspec_overrides.yaml` that points its `thunderid_flutter`
@@ -44,7 +44,7 @@ To test against something else:
 | Test user | `e2e_mobile_user` / `TestPassword@123` |
 
 The application is declared in
-[`quickstarts/flutter/thunderid-config/thunderid-config.yaml`](https://github.com/thunder-id/samples/blob/main/quickstarts/flutter/thunderid-config/thunderid-config.yaml)
+[`quickstarts/quickstart-flutter/thunderid-config/thunderid-config.yaml`](https://github.com/thunder-id/samples/blob/main/quickstarts/quickstart-flutter/thunderid-config/thunderid-config.yaml)
 in the samples repository, alongside the sample it configures. The sign-up flow
 registers an additional throwaway user per run, named `e2e_signup_<timestamp>`.
 

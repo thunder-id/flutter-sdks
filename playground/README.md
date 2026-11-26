@@ -5,7 +5,7 @@ repository. It depends on the plugin with `path: ..`, so changes to `lib/`, `and
 repository root show up the next time you run it.
 
 Looking for a minimal integration example instead? See the
-[Flutter quickstart](https://github.com/thunder-id/samples/tree/main/quickstarts/flutter) in the samples
+[Flutter quickstart](https://github.com/thunder-id/samples/tree/main/quickstarts/quickstart-flutter) in the samples
 repository.
 
 ## What's inside

@@ -2,7 +2,7 @@
 
 ## Project overview
 
-Flutter plugin providing the ThunderID authentication SDK (`thunderid_flutter`). Bridges to native iOS (`ThunderID` Swift SDK) and Android (`dev.thunderid:android`) via a `MethodChannel`. The Quickstart demo app lives in the samples repository at [`quickstarts/flutter`](https://github.com/thunder-id/samples/tree/main/quickstarts/flutter). The [`playground/`](playground/README.md) app exercises every SDK capability and widget against this checkout (`thunderid_flutter: path: ..`).
+Flutter plugin providing the ThunderID authentication SDK (`thunderid_flutter`). Bridges to native iOS (`ThunderID` Swift SDK) and Android (`dev.thunderid:android`) via a `MethodChannel`. The Quickstart demo app lives in the samples repository at [`quickstarts/quickstart-flutter`](https://github.com/thunder-id/samples/tree/main/quickstarts/quickstart-flutter). The [`playground/`](playground/README.md) app exercises every SDK capability and widget against this checkout (`thunderid_flutter: path: ..`).
 
 ## SDK development specification
 
@@ -49,7 +49,7 @@ flutter test
 # Fetch the Quickstart sample into tests/e2e/.samples, pointed at this checkout,
 # then build it (Android debug APK)
 tests/e2e/scripts/prepare-sample.sh
-cd tests/e2e/.samples/quickstarts/flutter && cp .env.example .env && flutter build apk --debug
+cd tests/e2e/.samples/quickstarts/quickstart-flutter && cp .env.example .env && flutter build apk --debug
 
 # Analyze and build the playground app (it has its own pubspec and analysis_options,
 # and the root analyzer excludes it)
@@ -158,7 +158,7 @@ analysis_options.yaml           Lint configuration
 - **Layer 1 — Client** (`thunderid_client.dart`): public Dart API — initialization, auth flows, token management, user/profile access. Delegates all protocol logic to native SDKs. The one exception is management operations (`management/`), which call the management API from Dart with the access token the native SDK hands out, so `http.fetcher` can replace their transport.
 - **Layer 2 — Channel** (`channel/thunderid_channel.dart`): `MethodChannel('dev.thunderid/sdk')` bridge. Converts `PlatformException` → `IAMException` and handles typed deserialization.
 - **Layer 3 — Widgets** (`widgets/`): Flutter UI components built on `InheritedWidget` (`ThunderIDProvider`).
-- **Layer 4 — Sample** ([`thunder-id/samples` `quickstarts/flutter`](https://github.com/thunder-id/samples/tree/main/quickstarts/flutter)): standalone demo app that depends on the published SDK. `tests/e2e/scripts/prepare-sample.sh` fetches it and overrides that dependency with this checkout.
+- **Layer 4 — Sample** ([`thunder-id/samples` `quickstarts/quickstart-flutter`](https://github.com/thunder-id/samples/tree/main/quickstarts/quickstart-flutter)): standalone demo app that depends on the published SDK. `tests/e2e/scripts/prepare-sample.sh` fetches it and overrides that dependency with this checkout.
 
 Every widget ships in two variants:
 - **Styled** — opinionated Material 3 defaults (e.g. `SignInButton`).
@@ -187,7 +187,7 @@ A component that changes here usually needs the same change in the sibling SDKs.
 The quickstarts and integration samples live in [thunder-id/samples](https://github.com/thunder-id/samples), and each one pins a released version of this SDK. A change here therefore can't break a sample until the sample bumps its version, which is exactly when a break would surface for a real app. Before raising a pull request, check every sample that uses this SDK:
 
 - **A sample stops compiling or behaving the same** (a renamed type or package, a changed signature, a moved default): raise a samples pull request that bumps the SDK version and fixes the sample. Keep it as a draft until the SDK release it needs is out.
-- **The change adds something a sample exists to show** (a self-care capability for `self-care/account`, a management component or operation for `b2b/manage`, a new sign-in option for the quickstarts): update that sample in the same samples pull request, so it demonstrates the new capability rather than working around its absence.
+- **The change adds something a sample exists to show** (a self-service capability for `self-service/myaccount-react`, a management component or operation for `management/admin-react`, a new sign-in option for the quickstarts): update that sample in the same samples pull request, so it demonstrates the new capability rather than working around its absence.
 - Link the samples pull request from this pull request's **Related PRs**, or say why no sample is affected.
 
 ## Code style

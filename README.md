@@ -3,7 +3,7 @@
 Flutter SDK for ThunderID. Provides authentication and user management for cross-platform iOS and Android applications.
 
 - [Quickstart](https://thunderid.dev/docs/next/getting-started/connect-your-application/flutter/)
-- [Quickstart sample](https://github.com/thunder-id/samples/tree/main/quickstarts/flutter)
+- [Quickstart sample](https://github.com/thunder-id/samples/tree/main/quickstarts/quickstart-flutter)
 - [API reference](https://thunderid.dev/docs/next/sdks/flutter/overview/)
 
 ## Installation
