@@ -291,7 +291,13 @@ class _BaseSignInState extends State<BaseSignIn> {
         }
         widget.onError?.call();
       } else {
-        if (mounted) setState(() { _currentStep = response; _error = null; });
+        if (mounted) {
+          setState(() {
+            _currentStep = response;
+            _error = response.failureReason;
+            _errorMessage = response.errorMessage;
+          });
+        }
       }
     } finally {
       _autoAdvancing = false;
@@ -301,8 +307,9 @@ class _BaseSignInState extends State<BaseSignIn> {
   /// Runs the native WebAuthn ceremony (`performPasskeyAuthentication` for a
   /// `passkeyChallenge`, `performPasskeyRegistration` for `passkeyCreationOptions`) and
   /// resubmits the flow with the resulting flat inputs, without requiring another user tap.
-  /// Loops in case the resubmit itself returns another passkey ceremony step. Returns `null`
-  /// (after setting [_error]) on ceremony failure, so the caller can bail out of [_submit].
+  /// A failed ceremony is submitted as `passkeyError` and the step the flow returns is shown.
+  /// Loops in case a successful resubmit returns another passkey ceremony step. Returns `null`
+  /// (after setting [_error]) when the resubmit fails, so the caller can bail out of [_submit].
   Future<EmbeddedFlowResponse?> _performPasskeyCeremony(EmbeddedFlowResponse response) async {
     final state = ThunderIDProvider.of(context);
     var current = response;
@@ -314,10 +321,18 @@ class _BaseSignInState extends State<BaseSignIn> {
       final flowId = current.flowId;
       if (flowId == null) return current;
 
+      Map<String, String> inputs;
+      Object? ceremonyError;
       try {
-        final inputs = passkeyChallenge != null
+        inputs = passkeyChallenge != null
             ? await state.client.performPasskeyAuthentication(requestOptionsJson: passkeyChallenge)
             : await state.client.performPasskeyRegistration(creationOptionsJson: passkeyCreationOptions!);
+      } catch (e) {
+        ceremonyError = e;
+        // Reports the failed prompt to the flow, which is still waiting for the passkey.
+        inputs = {'passkeyError': e is IAMException ? e.code.value : ThunderIDErrorCode.passkeyFailed.value};
+      }
+      try {
         current = await state.client.signIn(
           payload: EmbeddedSignInPayload(
             flowId: flowId,
@@ -328,16 +343,20 @@ class _BaseSignInState extends State<BaseSignIn> {
           request: EmbeddedFlowRequestConfig(applicationId: widget.applicationId),
         );
       } catch (e) {
-        if (mounted) setState(() => _error = e.toString());
+        if (mounted) setState(() => _error = (ceremonyError ?? e).toString());
         widget.onError?.call();
         return null;
       }
+      // Shows the step the flow returned for the failure instead of prompting again.
+      if (ceremonyError != null) return current;
     }
   }
 
   bool _shouldAutoAdvance(EmbeddedFlowResponse response) {
     if (_autoAdvancing) return false;
     if (response.flowStatus != FlowStatus.promptOnly) return false;
+    // A step carrying an error is shown, not skipped.
+    if (response.failureReason != null || response.errorMessage != null) return false;
     final data = response.data;
     if (data == null) return false;
 
