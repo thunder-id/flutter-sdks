@@ -8,6 +8,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:thunderid_flutter/thunderid_flutter.dart';
 
+import 'capabilities_support.dart';
+
 /// A fake management server: answers by `METHOD path` and records every request.
 class _FakeServer {
   final Map<String, ManagementResponse> routes = {};
@@ -38,7 +40,7 @@ Widget _app(_FakeServer server, Widget child) => MaterialApp(
         config: ThunderIDConfig(
           baseUrl: 'https://idp.example.com',
           clientId: 'test',
-          http: ThunderIDHttpConfig(fetcher: server.fetch),
+          http: ThunderIDHttpConfig(fetcher: withCapabilities(server.fetch)),
         ),
         child: Scaffold(body: SingleChildScrollView(child: child)),
       ),
@@ -87,7 +89,7 @@ void main() {
     server = _FakeServer();
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
       const MethodChannel('dev.thunderid/sdk'),
-      (call) async => call.method == 'initialize' ? true : (call.method == 'isSignedIn' ? false : null),
+      signedInChannel,
     );
   });
 

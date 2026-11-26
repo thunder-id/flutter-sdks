@@ -196,6 +196,9 @@ class _BaseUserCreateState extends State<BaseUserCreate> {
 /// User-create form that creates the user through the management API.
 ///
 /// The user is created in [ouId], or the signed-in user's own organization unit when omitted.
+///
+/// Renders nothing unless the provider's capabilities allow `create` on `user`. That only
+/// decides what is offered: the server still authorizes the request.
 class UserCreate extends StatefulWidget {
   final String? ouId;
   final ValueChanged<ManagedUser>? onCreated;
@@ -236,6 +239,7 @@ class _UserCreateState extends AdminConnectedState<UserCreate> {
 
   @override
   Widget build(BuildContext context) {
+    if (!capabilities.can('user', 'create')) return const SizedBox.shrink();
     final ac = AdminContext.of(context, widget.preferences);
     final ouId = widget.ouId ?? thunder?.defaultOuId;
     final create = _create;

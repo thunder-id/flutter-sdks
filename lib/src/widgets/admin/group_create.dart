@@ -140,6 +140,9 @@ class _BaseGroupCreateState extends State<BaseGroupCreate> {
 
 /// Group-create form that creates the group through the management API, in [ouId] or the
 /// signed-in user's own organization unit when omitted.
+///
+/// Renders nothing unless the provider's capabilities allow `create` on `group`. That only
+/// decides what is offered: the server still authorizes the request.
 class GroupCreate extends StatefulWidget {
   final String? ouId;
   final ValueChanged<Group>? onCreated;
@@ -176,6 +179,7 @@ class _GroupCreateState extends AdminConnectedState<GroupCreate> {
 
   @override
   Widget build(BuildContext context) {
+    if (!capabilities.can('group', 'create')) return const SizedBox.shrink();
     final ac = AdminContext.of(context, widget.preferences);
     final ouId = widget.ouId ?? thunder?.defaultOuId;
     final create = _create;

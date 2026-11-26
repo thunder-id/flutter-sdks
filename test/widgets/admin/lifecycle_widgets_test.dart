@@ -8,6 +8,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:thunderid_flutter/thunderid_flutter.dart';
 
+import 'capabilities_support.dart';
+
 /// A fake server that answers like ThunderID: the `flow` server configuration ([configured],
 /// handle by key), the administration flow listing (one flow per configured handle, with the id
 /// `id-<handle>`), flow execution, and [resources] by `METHOD path`. Every request is recorded.
@@ -65,7 +67,7 @@ Widget _app(_FlowServer server, Widget child) => MaterialApp(
         config: ThunderIDConfig(
           baseUrl: 'https://idp.example.com',
           clientId: 'test',
-          http: ThunderIDHttpConfig(fetcher: server.fetch),
+          http: ThunderIDHttpConfig(fetcher: withCapabilities(server.fetch)),
         ),
         child: Scaffold(body: SingleChildScrollView(child: child)),
       ),
@@ -95,7 +97,7 @@ void main() {
   setUp(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
       const MethodChannel('dev.thunderid/sdk'),
-      (call) async => call.method == 'initialize' ? true : (call.method == 'isSignedIn' ? false : null),
+      signedInChannel,
     );
   });
 

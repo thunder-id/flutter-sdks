@@ -41,6 +41,7 @@ abstract final class ManagementEndpointKeys {
   static const String configurationVersions = 'configurationVersions';
   static const String import = 'import';
   static const String export = 'export';
+  static const String capabilities = 'capabilities';
 
   /// Every key, in the order above.
   static const List<String> values = [
@@ -65,6 +66,7 @@ abstract final class ManagementEndpointKeys {
     configurationVersions,
     import,
     export,
+    capabilities,
   ];
 }
 
