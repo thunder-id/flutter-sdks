@@ -101,6 +101,7 @@ ThunderIDErrorCode managementErrorCodeForStatus(int statusCode) {
 /// Sends one management request through [fetcher] and decodes the JSON answer.
 ///
 /// Returns `null` for a `204` or a `DELETE`. Never retries (spec "Error model", requirement 6).
+/// [observe] is `false` for the SDK's own flow-execution requests, which telemetry never reports.
 Future<Object?> sendManagementRequest({
   required ManagementFetcher fetcher,
   required String operation,
@@ -108,12 +109,14 @@ Future<Object?> sendManagementRequest({
   required String method,
   required Uri url,
   Object? body,
+  bool observe = true,
 }) async {
   final request = ManagementRequest(
     method: method,
     url: url,
     headers: const {'Accept': 'application/json', 'Content-Type': 'application/json'},
     body: body == null ? null : jsonEncode(body),
+    observe: observe,
   );
 
   final ManagementResponse response;

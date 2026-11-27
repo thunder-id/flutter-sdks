@@ -50,7 +50,7 @@ class ThunderIDProvider extends StatefulWidget {
   State<ThunderIDProvider> createState() => ThunderIDState();
 }
 
-class ThunderIDState extends State<ThunderIDProvider> {
+class ThunderIDState extends State<ThunderIDProvider> with WidgetsBindingObserver {
   late final ThunderIDClient client;
   late final ThunderIDI18n i18n;
   bool _initialized = false;
@@ -104,11 +104,24 @@ class ThunderIDState extends State<ThunderIDProvider> {
     _removeSignOutListener = client.onSignOut(() {
       if (mounted) setState(() => _user = null);
     });
+    WidgetsBinding.instance.addObserver(this);
     _init();
+  }
+
+  /// Sends the waiting telemetry events when the app moves to the background, where it may be
+  /// stopped before the next batch.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Not gated on the provider's own initialization: events can be waiting while it reads the
+    // session, and the flush does nothing when telemetry is off.
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
+      unawaited(client.flushTelemetry());
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _removeSignOutListener?.call();
     if (widget.client == null) client.dispose();
     super.dispose();

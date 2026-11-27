@@ -62,6 +62,7 @@ extension UserAttributeVerificationOperations on ThunderIDManagementClient {
         failureMessage: 'Failed to send the verification link',
         method: 'POST',
         url: buildServerUrl(_operation, baseUrl, 'flow', id: 'execute'),
+        observe: false,
         body: {
           'flowType': FlowType.adminInitiated.value,
           'handle': flowHandle,

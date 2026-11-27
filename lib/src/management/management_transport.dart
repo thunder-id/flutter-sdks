@@ -14,11 +14,16 @@ class ManagementRequest {
   /// The JSON-encoded body, or `null` when the request has none.
   final String? body;
 
+  /// Whether usage telemetry may report this request as an API event. The SDK's own flow-execution
+  /// requests pass `false`: like sign-in and token requests, they are never API events.
+  final bool observe;
+
   const ManagementRequest({
     required this.method,
     required this.url,
     this.headers = const {},
     this.body,
+    this.observe = true,
   });
 }
 
@@ -28,7 +33,10 @@ class ManagementResponse {
   final String statusText;
   final String body;
 
-  const ManagementResponse({required this.statusCode, this.statusText = '', this.body = ''});
+  /// Response headers, with lower-cased names.
+  final Map<String, String> headers;
+
+  const ManagementResponse({required this.statusCode, this.statusText = '', this.body = '', this.headers = const {}});
 
   bool get ok => statusCode >= 200 && statusCode < 300;
 }
@@ -76,10 +84,13 @@ ManagementFetcher createAuthenticatedFetcher(
         }
         final response = await httpRequest.close();
         final responseBody = await response.transform(utf8.decoder).join();
+        final responseHeaders = <String, String>{};
+        response.headers.forEach((name, values) => responseHeaders[name.toLowerCase()] = values.join(','));
         return ManagementResponse(
           statusCode: response.statusCode,
           statusText: response.reasonPhrase,
           body: responseBody,
+          headers: responseHeaders,
         );
       } finally {
         client.close();

@@ -426,8 +426,13 @@ final class ThunderIDMethodHandler {
          "data": r.data.map { encodeFlowStepData($0) },
          "assertion": r.assertion, "failureReason": r.failureReason,
          "challengeToken": r.challengeToken, "expiresIn": r.expiresIn,
-         "error": r.error?.message.map {
-             ["message": ["key": $0.key as Any, "defaultValue": $0.defaultValue as Any, "params": $0.params as Any]]
+         // The error code goes through with the message, so the Dart side can report a well-formed
+         // code for a failed sign-in without ever reading the message.
+         "error": r.error.map { error in
+             ["code": error.code as Any,
+              "message": error.message.map {
+                  ["key": $0.key as Any, "defaultValue": $0.defaultValue as Any, "params": $0.params as Any]
+              } as Any]
          }]
     }
 

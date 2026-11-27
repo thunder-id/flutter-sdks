@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import '../management/management_transport.dart';
+import '../telemetry/telemetry_config.dart';
 import 'backend.dart';
 import 'preferences.dart';
 
@@ -89,6 +90,12 @@ class ThunderIDConfig {
   /// [defaultVendor].
   final String vendor;
 
+  /// Usage telemetry: screen views, API events, auth events and links that leave the app,
+  /// reported to an endpoint the deployment configures (spec "Telemetry"). Off unless
+  /// [TelemetryConfig.endpoint] is set. Kept out of [toMap]: it runs in Dart, where the management
+  /// calls, the backend requests and the `consent` callback are.
+  final TelemetryConfig? telemetry;
+
   const ThunderIDConfig({
     required this.baseUrl,
     this.clientId,
@@ -112,6 +119,7 @@ class ThunderIDConfig {
     this.session = const SessionConfig(),
     this.preferences,
     this.vendor = defaultVendor,
+    this.telemetry,
   });
 
   Map<String, dynamic> toMap() => {

@@ -3,11 +3,14 @@
 
 import 'dart:async';
 
+import 'package:url_launcher/url_launcher.dart';
+
 import 'backend/backend_client.dart';
 import 'backend/backend_http_client.dart';
 import 'backend/http_transport.dart';
 import 'backend/resolve_backend_endpoints.dart';
 import 'channel/thunderid_channel.dart';
+import 'management/management_transport.dart';
 import 'management/permissions.dart';
 import 'management/thunderid_management_client.dart';
 import 'models/attribute_verification.dart';
@@ -21,6 +24,9 @@ import 'models/token_exchange_config.dart';
 import 'models/token_response.dart';
 import 'models/user.dart';
 import 'models/user_profile.dart';
+import 'telemetry/client_telemetry.dart';
+import 'telemetry/telemetry.dart';
+import 'telemetry/telemetry_rules.dart';
 
 /// Flutter SDK client — Core Lib layer, delegates all protocol operations to
 /// the native iOS and Android Platform SDKs via [ThunderIDChannel] (spec §7.1).
@@ -36,6 +42,7 @@ class ThunderIDClient {
   String? _afterSignOutUrl;
   ThunderIDConfig? _config;
   ThunderIDManagementClient? _management;
+  ClientTelemetry? _telemetry;
 
   BackendClient? _backend;
   BackendHttpClient? _backendHttp;
@@ -67,7 +74,10 @@ class ThunderIDClient {
     }
     final result = await _channel.invoke<bool>('initialize', config.toMap());
     _initialized = result ?? false;
-    if (_initialized) _config = config;
+    if (_initialized) {
+      _config = config;
+      _startTelemetry(config);
+    }
     return _initialized;
   }
 
@@ -93,12 +103,27 @@ class ThunderIDClient {
     _refuseOnBackend('The embedded sign-in flow');
     _isLoading = true;
     try {
-      final result = await _channel.invokeMap('signIn', {
-        'payload': payload.toMap(),
-        'request': request.toMap(),
-        if (sessionId != null) 'sessionId': sessionId,
-      });
-      return EmbeddedFlowResponse.fromMap(result);
+      final Map<dynamic, dynamic> result;
+      try {
+        result = await _channel.invokeMap('signIn', {
+          'payload': payload.toMap(),
+          'request': request.toMap(),
+          if (sessionId != null) 'sessionId': sessionId,
+        });
+      } on IAMException catch (error) {
+        _telemetry?.telemetry.auth(TelemetryAuthAction.signInFailed, {'error_code': error.code.value});
+        rethrow;
+      }
+      final response = EmbeddedFlowResponse.fromMap(result);
+      if (response.flowStatus == FlowStatus.complete) unawaited(_telemetry?.signedIn());
+      if (response.flowStatus == FlowStatus.error) {
+        // Only a well-formed error code is reported, never the flow's message.
+        final code = (result['error'] as Map?)?['code'];
+        _telemetry?.telemetry.auth(TelemetryAuthAction.signInFailed, {
+          if (code is String && TelemetryApiRules.isErrorCode(code)) 'error_code': code,
+        });
+      }
+      return response;
     } finally {
       _isLoading = false;
     }
@@ -188,10 +213,18 @@ class ThunderIDClient {
     _requireInitialized();
     _isLoading = true;
     try {
-      final backend = _backend;
-      if (backend != null) return await backend.handleRedirectCallback(url);
-      final result = await _channel.invokeMap('handleRedirectCallback', {'url': url});
-      return User.fromMap(result);
+      final User user;
+      try {
+        final backend = _backend;
+        user = backend != null
+            ? await backend.handleRedirectCallback(url)
+            : User.fromMap(await _channel.invokeMap('handleRedirectCallback', {'url': url}));
+      } on IAMException catch (error) {
+        _telemetry?.telemetry.auth(TelemetryAuthAction.signInFailed, {'error_code': error.code.value});
+        rethrow;
+      }
+      unawaited(_telemetry?.signedIn(user));
+      return user;
     } finally {
       _isLoading = false;
     }
@@ -220,6 +253,8 @@ class ThunderIDClient {
     _requireInitialized();
     _isLoading = true;
     try {
+      // Reported, and sent, before the session and its token are gone.
+      await _telemetry?.signedOut();
       final backend = _backend;
       if (backend != null) {
         return await backend.signOut() ?? _afterSignOutUrl ?? '/';
@@ -451,7 +486,33 @@ class ThunderIDClient {
   void dispose() {
     _stopBackendWatch?.call();
     _stopBackendWatch = null;
+    unawaited(_telemetry?.telemetry.dispose());
   }
+
+  // ── Telemetry ─────────────────────────────────────────────────────────────
+
+  /// Reports an event the app names, for what is neither a screen, an API call the SDK makes nor
+  /// a link (spec "Telemetry"). Does nothing unless [ThunderIDConfig.telemetry] is configured.
+  ///
+  /// [name] is `<type>.<action>`; the configured prefix is added. [data] holds codes only, never a
+  /// name or anything a user typed.
+  void track(String name, [Map<String, String> data = const {}]) => _telemetry?.telemetry.track(name, data);
+
+  /// Reports a screen view from its route pattern, such as `/applications/:id`, never the
+  /// concrete path. [TelemetryNavigatorObserver] calls it on each navigation.
+  void trackPageView(String pattern) => _telemetry?.telemetry.page(pattern);
+
+  /// Reports a link that leaves the app, with its host and path only.
+  void trackLink(Uri url) => _telemetry?.telemetry.link(url);
+
+  /// Reports [url] as a link that leaves the app, then opens it outside the app.
+  Future<bool> openExternalLink(Uri url) {
+    trackLink(url);
+    return launchUrl(url, mode: LaunchMode.externalApplication);
+  }
+
+  /// Sends the telemetry events that are waiting, such as when the app moves to the background.
+  Future<void> flushTelemetry() => _telemetry?.telemetry.flush() ?? Future.value();
 
   // ── HTTP ──────────────────────────────────────────────────────────────────
 
@@ -474,7 +535,17 @@ class ThunderIDClient {
         'httpRequest is only available when sign-in runs on a backend (endpoints.backend)',
       );
     }
-    return backendHttp.request(request);
+    final telemetry = _telemetry;
+    if (telemetry == null) return backendHttp.request(request);
+    final HttpResponseData response;
+    try {
+      response = await backendHttp.request(request);
+    } catch (_) {
+      telemetry.observeHttp(request);
+      rethrow;
+    }
+    telemetry.observeHttp(request, response: response);
+    return response;
   }
 
   // ── Management ────────────────────────────────────────────────────────────
@@ -488,10 +559,13 @@ class ThunderIDClient {
   ThunderIDManagementClient get management {
     _requireInitialized();
     final config = _config!;
+    final fetcher = config.http?.fetcher ??
+        createAuthenticatedFetcher(getAccessToken, allowInsecureConnections: config.allowInsecureConnections);
     return _management ??= ThunderIDManagementClient(
       baseUrl: config.baseUrl,
       endpoints: config.endpoints?.collections ?? const {},
-      fetcher: config.http?.fetcher,
+      // Every call that does not pass its own fetcher is reported to the telemetry, when it is on.
+      fetcher: _telemetry?.observe(fetcher) ?? fetcher,
       accessTokenProvider: getAccessToken,
       allowInsecureConnections: config.allowInsecureConnections,
     );
@@ -522,12 +596,32 @@ class ThunderIDClient {
     // Checks on returning to the foreground run either way; polling only when asked for.
     _stopBackendWatch = backend.watch(config.session.checkInterval);
     _initialized = true;
+    _startTelemetry(config);
     // Read the session now, so the client reports loading until it is known whether the user is
     // signed in. A failed read is retried by the next call that needs the session.
     unawaited(backend.getSession().then<void>((_) {}, onError: (Object _) {}));
   }
 
+  void _startTelemetry(ThunderIDConfig config) {
+    _telemetry = ClientTelemetry.create(
+      config.telemetry,
+      baseUrl: config.baseUrl,
+      backend: _backend != null,
+      allowLoopback: config.allowInsecureConnections,
+      transport: _httpTransport,
+      accessToken: getAccessToken,
+      currentUser: () async => await isSignedIn() ? await getUser() : null,
+      store: (
+        read: (key) => _channel.invoke<String>('readSecureValue', {'vendor': config.vendor, 'key': key}),
+        write: (key, value) => value == null
+            ? _channel.invoke<void>('deleteSecureValue', {'vendor': config.vendor, 'key': key})
+            : _channel.invoke<void>('writeSecureValue', {'vendor': config.vendor, 'key': key, 'value': value}),
+      ),
+    );
+  }
+
   void _notifySignedOut() {
+    unawaited(_telemetry?.signedOut(expired: true));
     for (final listener in List.of(_signOutListeners)) {
       listener();
     }
