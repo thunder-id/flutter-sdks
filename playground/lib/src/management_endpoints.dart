@@ -45,6 +45,7 @@ Future<List<ResolvedEndpoint>> resolveManagementEndpoints(ThunderIDManagementCli
     ManagementEndpointKeys.import: (f) =>
         management.importConfiguration(const ImportConfigurationRequest(dryRun: true), fetcher: f),
     ManagementEndpointKeys.export: (f) => management.exportConfiguration(const ExportConfigurationRequest(), fetcher: f),
+    ManagementEndpointKeys.capabilities: (f) => management.getCapabilities(fetcher: f),
   };
   final resolved = <ResolvedEndpoint>[];
   for (final entry in calls.entries) {

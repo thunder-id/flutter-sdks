@@ -202,6 +202,11 @@ class BaseAgentDetails extends StatelessWidget {
 ///
 /// Changing data is off by default: set [deletable] to offer delete (with confirmation) and
 /// [lifecycleActions] to offer suspend, unsuspend and unlock.
+///
+/// Each action is also offered only when the provider's capabilities allow it for this record
+/// ([RecordAccess] on `agent`): delete needs [RecordAccess.canDelete], and the lifecycle
+/// actions [RecordAccess.canChangeState]. That only decides what is offered: the server still
+/// authorizes every request.
 class AgentDetails extends StatefulWidget {
   final String agentId;
   final bool deletable;
@@ -266,6 +271,7 @@ class _AgentDetailsState extends AdminConnectedState<AgentDetails> {
     final delete = _delete;
     final lifecycle = _lifecycle;
     final agent = _agent?.data;
+    final access = capabilities.recordAccess('agent', isReadOnly: agent?.isReadOnly);
     return BaseAgentDetails(
       agent: agent,
       groups: _groups?.data?.items ?? const [],
@@ -277,9 +283,11 @@ class _AgentDetailsState extends AdminConnectedState<AgentDetails> {
               toManagementErrorMessage(ac.t, delete?.error, 'admin.agents.details.delete.error') ??
               lifecycle?.error(ac),
       isDeleting: delete?.isLoading ?? false,
-      onDelete: widget.deletable && delete != null ? () => unawaited(delete.mutate(widget.agentId)) : null,
-      lifecycleActions: lifecycle?.actions(agent?.status?.value) ?? const [],
-      onLifecycleAction: lifecycle?.handler(widget.agentId),
+      onDelete: widget.deletable && access.canDelete && delete != null
+          ? () => unawaited(delete.mutate(widget.agentId))
+          : null,
+      lifecycleActions: access.canChangeState ? lifecycle?.actions(agent?.status?.value) ?? const [] : const [],
+      onLifecycleAction: access.canChangeState ? lifecycle?.handler(widget.agentId) : null,
       isRunningLifecycleAction: lifecycle?.isRunning ?? false,
       actions: widget.actions,
       preferences: widget.preferences,

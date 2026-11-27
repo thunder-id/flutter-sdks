@@ -3,6 +3,7 @@
 
 import 'package:flutter/widgets.dart';
 
+import '../../../state/capabilities_notifier.dart';
 import '../../../state/management_resources.dart';
 import '../../thunderid_provider.dart';
 
@@ -15,11 +16,23 @@ abstract class AdminConnectedState<W extends StatefulWidget> extends State<W> {
   ManagementResources? _resources;
   ThunderIDState? _thunder;
   final List<ChangeNotifier> _owned = [];
+  CapabilitiesNotifier? _capabilities;
 
   /// The provider's management state, or `null` until the provider has initialized.
   ManagementResources? get resources => _resources;
 
   ThunderIDState? get thunder => _thunder;
+
+  /// The provider's shared capabilities, read on first use; the component rebuilds when they
+  /// change. Call it from `build` only in components that gate an action on them.
+  CapabilitiesNotifier get capabilities {
+    var capabilities = _capabilities;
+    if (capabilities == null) {
+      capabilities = _capabilities = _thunder!.capabilities;
+      capabilities.addListener(_changed);
+    }
+    return capabilities..load();
+  }
 
   /// Whether the provider failed to initialize, so nothing will load.
   bool get providerFailed => _resources == null && (_thunder?.error != null) && !(_thunder?.isLoading ?? true);
@@ -76,6 +89,7 @@ abstract class AdminConnectedState<W extends StatefulWidget> extends State<W> {
 
   @override
   void dispose() {
+    _capabilities?.removeListener(_changed);
     _releaseAll();
     super.dispose();
   }

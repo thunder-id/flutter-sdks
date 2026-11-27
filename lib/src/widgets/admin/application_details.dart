@@ -430,6 +430,11 @@ class _BaseApplicationDetailsState extends State<BaseApplicationDetails> {
 /// offer regenerating the client secret (both with confirmation; the new secret is shown once),
 /// and [lifecycleActions] to offer suspend and unsuspend. The server guards applications with the
 /// root `system` permission.
+///
+/// Each action is also offered only when the provider's capabilities allow it for this record
+/// ([RecordAccess] on `app`): edit and regenerate need it not read-only, delete needs
+/// [RecordAccess.canDelete], and the lifecycle actions [RecordAccess.canChangeState]. That only
+/// decides what is offered: the server still authorizes every request.
 class ApplicationDetails extends StatefulWidget {
   final String applicationId;
   final bool deletable;
@@ -515,6 +520,7 @@ class _ApplicationDetailsState extends AdminConnectedState<ApplicationDetails> {
     final update = _update;
     final regenerate = _regenerate;
     final lifecycle = _lifecycle;
+    final access = capabilities.recordAccess('app', isReadOnly: application?.isReadOnly);
     return BaseApplicationDetails(
       application: application,
       isLoading: _application?.isLoading ?? !providerFailed,
@@ -526,21 +532,23 @@ class _ApplicationDetailsState extends AdminConnectedState<ApplicationDetails> {
               toManagementErrorMessage(ac.t, regenerate?.error, 'admin.applications.details.regenerate.error') ??
               lifecycle?.error(ac),
       isDeleting: delete?.isLoading ?? false,
-      onDelete: widget.deletable && delete != null ? () => unawaited(delete.mutate(widget.applicationId)) : null,
+      onDelete: widget.deletable && access.canDelete && delete != null
+          ? () => unawaited(delete.mutate(widget.applicationId))
+          : null,
       isUpdating: update?.isLoading ?? false,
-      onUpdate: widget.editable && update != null && application != null
+      onUpdate: widget.editable && !access.readOnly && update != null && application != null
           ? (edit) => unawaited(
                 update.mutate((applicationId: widget.applicationId, data: edit.applyTo(application))),
               )
           : null,
       isRegeneratingSecret: regenerate?.isLoading ?? false,
-      onRegenerateSecret: widget.secretRegenerable && regenerate != null
+      onRegenerateSecret: widget.secretRegenerable && !access.readOnly && regenerate != null
           ? () => unawaited(regenerate.mutate(widget.applicationId))
           : null,
       clientSecret: regenerate?.data?.clientSecret,
       onSecretDismissed: regenerate?.reset,
-      lifecycleActions: lifecycle?.actions(application?.status?.value) ?? const [],
-      onLifecycleAction: lifecycle?.handler(widget.applicationId),
+      lifecycleActions: access.canChangeState ? lifecycle?.actions(application?.status?.value) ?? const [] : const [],
+      onLifecycleAction: access.canChangeState ? lifecycle?.handler(widget.applicationId) : null,
       isRunningLifecycleAction: lifecycle?.isRunning ?? false,
       actions: widget.actions,
       preferences: widget.preferences,

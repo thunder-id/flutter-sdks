@@ -6,11 +6,13 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 
 import '../i18n/thunderid_i18n.dart';
+import '../management/capabilities.dart';
 import '../management/thunderid_management_client.dart';
 import '../models/preferences.dart';
 import '../models/thunderid_config.dart';
 import '../models/user.dart';
 import '../models/user_profile.dart';
+import '../state/capabilities_notifier.dart';
 import '../state/granted_permissions.dart';
 import '../state/management_resources.dart';
 import '../thunderid_client.dart';
@@ -88,6 +90,19 @@ class ThunderIDState extends State<ThunderIDProvider> {
   GrantedPermissionsNotifier grantedPermissions() =>
       GrantedPermissionsNotifier(() => client.getAccessToken(), signedIn: initialized && isSignedIn);
 
+  /// The signed-in user's management capabilities, shared by every widget under this provider
+  /// and read once, on first [CapabilitiesNotifier.load]. They decide what is offered, not what
+  /// is allowed: the server authorizes every management request. The provider owns and disposes
+  /// it.
+  late final CapabilitiesNotifier capabilities = CapabilitiesNotifier(
+    read: () => management.getCapabilities(),
+    grantedPermissions: () => client.getGrantedPermissions(),
+    user: _user,
+  );
+
+  /// Tells [capabilities] the user changed. Called wherever [_user] is assigned.
+  void _userChanged() => capabilities.setUser(_user);
+
   /// The organization unit the signed-in user belongs to, from the `ouId` claim, used by the
   /// admin create components when the application does not pass one.
   String? get defaultOuId {
@@ -103,6 +118,7 @@ class ThunderIDState extends State<ThunderIDProvider> {
     // A session that ends elsewhere, such as a sign-out in another app, clears the user.
     _removeSignOutListener = client.onSignOut(() {
       if (mounted) setState(() => _user = null);
+      _userChanged();
     });
     _init();
   }
@@ -110,6 +126,7 @@ class ThunderIDState extends State<ThunderIDProvider> {
   @override
   void dispose() {
     _removeSignOutListener?.call();
+    capabilities.dispose();
     if (widget.client == null) client.dispose();
     super.dispose();
   }
@@ -124,6 +141,7 @@ class ThunderIDState extends State<ThunderIDProvider> {
         _syncUserProfile();
       }
       _initialized = true;
+      _userChanged();
       _error = null;
     } on TimeoutException {
       _error = 'Initialization timed out. Verify THUNDERID_BASE_URL and that the ThunderID server is reachable.';
@@ -141,6 +159,7 @@ class ThunderIDState extends State<ThunderIDProvider> {
       final signedIn = await client.isSignedIn();
       _user = signedIn ? await client.getUser() : null;
       if (signedIn) _syncUserProfile();
+      _userChanged();
       _error = null;
     } catch (e) {
       _error = e.toString();
@@ -156,6 +175,7 @@ class ThunderIDState extends State<ThunderIDProvider> {
     if (current == null || !mounted) return;
     final merged = User({...current.claims, ...profile.attributes});
     setState(() => _user = merged);
+    _userChanged();
     // Write through to the native cache as well: getUser() short-circuits on it,
     // so a later refresh() would otherwise resurrect the pre-merge claims.
     unawaited(client.setCachedUser(merged).catchError((Object _) {}));

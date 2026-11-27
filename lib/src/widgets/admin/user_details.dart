@@ -343,6 +343,11 @@ class _BaseUserDetailsState extends State<BaseUserDetails> {
 /// Changing data is off by default: set [deletable] to offer delete (with confirmation),
 /// [editable] to offer editing the user's string attributes, [lifecycleActions] to offer
 /// suspend, unsuspend and unlock, and [attributeVerification] to offer sending a verification link.
+///
+/// Each action is also offered only when the provider's capabilities allow it for this record
+/// ([RecordAccess] on `user`): editing needs it not read-only, delete needs [RecordAccess.canDelete], and the lifecycle
+/// actions [RecordAccess.canChangeState]. That only decides what is offered: the server still
+/// authorizes every request.
 class UserDetails extends StatefulWidget {
   final String userId;
   final bool deletable;
@@ -456,6 +461,7 @@ class _UserDetailsState extends AdminConnectedState<UserDetails> {
     final delete = _delete;
     final update = _update;
     final lifecycle = _lifecycle;
+    final access = capabilities.recordAccess('user', isReadOnly: user?.isReadOnly);
     final verification = _verification;
     final verificationHandle = adminVerificationFlowHandle(
       enabled: widget.attributeVerification,
@@ -481,9 +487,11 @@ class _UserDetailsState extends AdminConnectedState<UserDetails> {
                 'admin.users.details.verification.load_error',
               ),
       isDeleting: delete?.isLoading ?? false,
-      onDelete: widget.deletable && delete != null ? () => unawaited(delete.mutate(widget.userId)) : null,
+      onDelete: widget.deletable && access.canDelete && delete != null
+          ? () => unawaited(delete.mutate(widget.userId))
+          : null,
       isUpdating: isUpdating,
-      onUpdate: widget.editable && update != null && user != null
+      onUpdate: widget.editable && !access.readOnly && update != null && user != null
           ? (attributes) {
               if (update.isLoading || (verification?.isLoading ?? false)) return;
               verification?.reset();
@@ -497,8 +505,8 @@ class _UserDetailsState extends AdminConnectedState<UserDetails> {
               );
             }
           : null,
-      lifecycleActions: lifecycle?.actions(user?.status?.value) ?? const [],
-      onLifecycleAction: lifecycle?.handler(widget.userId),
+      lifecycleActions: access.canChangeState ? lifecycle?.actions(user?.status?.value) ?? const [] : const [],
+      onLifecycleAction: access.canChangeState ? lifecycle?.handler(widget.userId) : null,
       isRunningLifecycleAction: lifecycle?.isRunning ?? false,
       isSendingVerification: verification?.isLoading ?? false,
       sentVerification: verification?.data,

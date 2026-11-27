@@ -134,7 +134,9 @@ class BaseGroupMembers extends StatelessWidget {
 /// Member list of one group, loaded through the management API.
 ///
 /// Changing membership is off by default: set [editable] to offer adding users and agents and
-/// removing members.
+/// removing members. Editing is also offered only when the provider's
+/// capabilities allow `update` on `group`; that only decides what is offered, and the server still
+/// authorizes every request.
 class GroupMembers extends StatefulWidget {
   final String groupId;
   final bool editable;
@@ -214,7 +216,7 @@ class _GroupMembersState extends AdminConnectedState<GroupMembers> {
     final ac = AdminContext.of(context, widget.preferences);
     final add = _add;
     final remove = _remove;
-    final editable = widget.editable && add != null && remove != null;
+    final editable = widget.editable && capabilities.can('group', 'update') && add != null && remove != null;
     return BaseGroupMembers(
       members: _members?.data?.items ?? const [],
       isLoading: _members?.isLoading ?? !providerFailed,

@@ -165,6 +165,7 @@ class EndpointsConfig {
   final String? configurationVersions;
   final String? import;
   final String? export;
+  final String? capabilities;
 
   /// The URL of the OpenID Connect discovery document the native SDK reads the sign-in endpoints
   /// and the expected ID token issuer from. Unset, it is `{baseUrl}/.well-known/openid-configuration`.
@@ -200,6 +201,7 @@ class EndpointsConfig {
     this.configurationVersions,
     this.import,
     this.export,
+    this.capabilities,
     this.wellKnown,
     this.backend,
   });
@@ -227,6 +229,7 @@ class EndpointsConfig {
         if (configurationVersions case final url?) 'configurationVersions': url,
         if (import case final url?) 'import': url,
         if (export case final url?) 'export': url,
+        if (capabilities case final url?) 'capabilities': url,
       };
 }
 

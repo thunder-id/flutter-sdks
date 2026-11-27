@@ -160,6 +160,9 @@ class _BaseAgentCreateState extends State<BaseAgentCreate> {
 
 /// Agent-registration form that registers the agent through the management API, in [ouId] or
 /// the signed-in user's own organization unit when omitted.
+///
+/// Renders nothing unless the provider's capabilities allow `create` on `agent`. That only
+/// decides what is offered: the server still authorizes the request.
 class AgentCreate extends StatefulWidget {
   final String? ouId;
 
@@ -202,6 +205,7 @@ class _AgentCreateState extends AdminConnectedState<AgentCreate> {
 
   @override
   Widget build(BuildContext context) {
+    if (!capabilities.can('agent', 'create')) return const SizedBox.shrink();
     final ac = AdminContext.of(context, widget.preferences);
     final ouId = widget.ouId ?? thunder?.defaultOuId;
     final create = _create;

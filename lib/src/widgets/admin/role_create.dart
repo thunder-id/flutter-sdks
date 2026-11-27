@@ -140,6 +140,9 @@ class _BaseRoleCreateState extends State<BaseRoleCreate> {
 
 /// Role-create form that creates the role through the management API, in [ouId] or the
 /// signed-in user's own organization unit when omitted.
+///
+/// Renders nothing unless the provider's capabilities allow `create` on `role`. That only
+/// decides what is offered: the server still authorizes the request.
 class RoleCreate extends StatefulWidget {
   final String? ouId;
   final ValueChanged<Role>? onCreated;
@@ -176,6 +179,7 @@ class _RoleCreateState extends AdminConnectedState<RoleCreate> {
 
   @override
   Widget build(BuildContext context) {
+    if (!capabilities.can('role', 'create')) return const SizedBox.shrink();
     final ac = AdminContext.of(context, widget.preferences);
     final ouId = widget.ouId ?? thunder?.defaultOuId;
     final create = _create;

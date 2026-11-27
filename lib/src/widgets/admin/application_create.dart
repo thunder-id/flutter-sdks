@@ -307,6 +307,9 @@ class _BaseApplicationCreateState extends State<BaseApplicationCreate> {
 /// When the server returns a client secret for the new application, it is shown once; [onCreated]
 /// receives it too, and it is forgotten when the secret is dismissed. The server guards
 /// applications with the root `system` permission.
+///
+/// Renders nothing unless the provider's capabilities allow `create` on `app`. That only
+/// decides what is offered: the server still authorizes the request.
 class ApplicationCreate extends StatefulWidget {
   final String? ouId;
   final ValueChanged<ApplicationCreateResult>? onCreated;
@@ -366,6 +369,7 @@ class _ApplicationCreateState extends AdminConnectedState<ApplicationCreate> {
 
   @override
   Widget build(BuildContext context) {
+    if (!capabilities.can('app', 'create')) return const SizedBox.shrink();
     final ac = AdminContext.of(context, widget.preferences);
     final ouId = widget.ouId ?? thunder?.defaultOuId;
     final create = _create;

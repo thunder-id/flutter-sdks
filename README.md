@@ -28,6 +28,18 @@ dependencies:
 
 The native iOS and Android ThunderID SDKs are pulled in automatically as transitive dependencies, no extra setup needed.
 
+## Management capabilities
+
+`ThunderIDProvider.of(context).capabilities` reports which management actions the signed-in user's
+access token allows, read once from `GET /capabilities` and shared by every widget under the provider.
+`CapabilityGuard` and the admin widgets use it to offer only those actions. It decides what is
+offered, not what is allowed: it is not an authorization decision, the server authorizes every
+management request, and the SDK never blocks a request because of it.
+
+```dart
+CapabilityGuard(resource: 'user', action: 'create', child: MyInviteButton())
+```
+
 ## Playground
 
 [`playground/`](playground/README.md) is a Flutter app that runs every SDK capability and widget against

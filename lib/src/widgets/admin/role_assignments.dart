@@ -172,7 +172,9 @@ class BaseRoleAssignments extends StatelessWidget {
 /// Assignments of one role, loaded through the management API.
 ///
 /// Changing assignments is off by default: set [editable] to offer assigning users, groups,
-/// and agents and removing assignments.
+/// and agents and removing assignments. Editing is also offered only when the provider's
+/// capabilities allow `update` on `role`; that only decides what is offered, and the server still
+/// authorizes every request.
 class RoleAssignments extends StatefulWidget {
   final String roleId;
   final bool editable;
@@ -260,7 +262,7 @@ class _RoleAssignmentsState extends AdminConnectedState<RoleAssignments> {
     final ac = AdminContext.of(context, widget.preferences);
     final assign = _assign;
     final unassign = _unassign;
-    final editable = widget.editable && assign != null && unassign != null;
+    final editable = widget.editable && capabilities.can('role', 'update') && assign != null && unassign != null;
     return BaseRoleAssignments(
       assignments: _assignments?.data?.items ?? const [],
       isLoading: _assignments?.isLoading ?? !providerFailed,

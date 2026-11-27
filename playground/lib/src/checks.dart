@@ -561,6 +561,41 @@ final List<CheckDef> checkDefs = [
     },
   ),
   CheckDef(
+    id: 'capabilities',
+    section: 'Management',
+    name: 'Capabilities',
+    api: 'management.getCapabilities() · capabilities (CapabilitiesNotifier)',
+    run: (sdk, config) async {
+      final management = _management(sdk);
+      final read = await _log.trace(
+        'getCapabilities',
+        management.getCapabilities,
+        detail: (c) => '${c.scope.type}${c.scope.ouId == null ? '' : ' ${c.scope.ouId}'}, ${c.resources.length} resources',
+      );
+      final notifier = sdk.capabilities..load();
+      if (notifier.isLoading) {
+        final done = Completer<void>();
+        void listener() {
+          if (!notifier.isLoading && !done.isCompleted) done.complete();
+        }
+
+        notifier.addListener(listener);
+        await done.future.timeout(const Duration(seconds: 15)).whenComplete(() => notifier.removeListener(listener));
+      }
+      if (notifier.error != null) return CheckResult.fail('CapabilitiesNotifier failed: ${notifier.error}');
+      for (final resource in read.resources.keys) {
+        for (final action in const ['view', 'create', 'update', 'delete']) {
+          if (notifier.can(resource, action) != read.can(resource, action)) {
+            return CheckResult.fail('can("$resource", "$action") differs between the notifier and the read');
+          }
+        }
+      }
+      if (notifier.can('no-such-resource')) return const CheckResult.fail('An unreported resource was allowed');
+      final viewable = read.resources.keys.where(read.can).take(4).join(', ');
+      return CheckResult.pass('${read.resources.length} resources; viewable: ${viewable.isEmpty ? 'none' : viewable}');
+    },
+  ),
+  CheckDef(
     id: 'groups',
     section: 'Management',
     name: 'Groups',
