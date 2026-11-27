@@ -81,6 +81,9 @@ final class ThunderIDMethodHandler {
                 let user = try await client.handleRedirectCallback(url: url)
                 result(encodeUser(user))
 
+            case "switchOrganizationUnit":
+                await handleSwitchOrganizationUnit(args, result: result)
+
             case "signOut":
                 let afterUrl = try await client.signOut()
                 result(afterUrl)
@@ -264,6 +267,45 @@ final class ThunderIDMethodHandler {
             result(callbackURL.absoluteString)
         } catch is FederatedAuthSession.CancelledError {
             result(FlutterError(code: "FEDERATED_AUTH_CANCELLED", message: "User cancelled sign-in", details: nil))
+        } catch {
+            result(FlutterError(code: "UNKNOWN_ERROR", message: error.localizedDescription, details: nil))
+        }
+    }
+
+    // MARK: - Organization units
+
+    /// Switches the session to the organization unit `ouId` through the native SDK. With `useBrowser`,
+    /// a redirect sign-in bounded to the unit opens in an `ASWebAuthenticationSession` when no device
+    /// secret can switch silently; otherwise app-native mode runs the `AUTHENTICATION` flow. Handles its
+    /// own errors so a dismissed browser is reported as `FEDERATED_AUTH_CANCELLED`.
+    private func handleSwitchOrganizationUnit(_ args: [String: Any], result: @escaping FlutterResult) async {
+        let ouId = args["ouId"] as? String ?? ""
+        let useBrowser = args["useBrowser"] as? Bool ?? true
+        let session = federatedAuthSession
+        var options = SwitchOrganizationUnitOptions(applicationId: args["applicationId"] as? String)
+        if useBrowser {
+            options.authorize = { [weak self] url in
+                guard let scheme = await self?.callbackURLScheme(from: url) else {
+                    throw ThunderIDError(
+                        code: .invalidConfiguration,
+                        message: "Unable to determine callback URL scheme from the authorization URL's " +
+                            "redirect_uri or afterSignInUrl"
+                    )
+                }
+                return try await session.authenticate(url: url, callbackURLScheme: scheme)
+            }
+        }
+        do {
+            switch try await client.switchOrganizationUnit(ouId, options: options) {
+            case .switched(let user):
+                result(["status": "switched", "user": encodeUser(user)] as [String: Any?])
+            case .signInRequired(let response):
+                result(["status": "signInRequired", "response": encodeFlowResponse(response)] as [String: Any?])
+            }
+        } catch is FederatedAuthSession.CancelledError {
+            result(FlutterError(code: "FEDERATED_AUTH_CANCELLED", message: "User cancelled sign-in", details: nil))
+        } catch let error as ThunderIDError {
+            result(FlutterError(code: error.code.rawValue, message: error.message, details: nil))
         } catch {
             result(FlutterError(code: "UNKNOWN_ERROR", message: error.localizedDescription, details: nil))
         }

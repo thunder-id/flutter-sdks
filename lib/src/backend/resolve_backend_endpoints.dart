@@ -24,6 +24,9 @@ class ResolvedBackendEndpoints {
 
   final Uri token;
 
+  /// Switches the backend's session to another organization unit.
+  final Uri ouSwitch;
+
   /// Where the backend sends the browser back to after sign-in: the app's registered scheme.
   final String redirectUri;
 
@@ -42,6 +45,7 @@ class ResolvedBackendEndpoints {
     required this.signOut,
     required this.proxy,
     required this.token,
+    required this.ouSwitch,
     required this.redirectUri,
     required this.bypassUrls,
     required this.attachToken,
@@ -102,6 +106,7 @@ ResolvedBackendEndpoints? resolveBackendEndpoints(ThunderIDConfig config) {
     signOut: resolve('signOut', endpoints.signOut, '/signout'),
     proxy: _trimTrailingSlashes(_resolvePath(baseUrl, 'proxy', endpoints.proxy, '/proxy')),
     token: resolve('token', endpoints.token, '/token'),
+    ouSwitch: resolve('ouSwitch', endpoints.ouSwitch, '/switch'),
     redirectUri: redirectUri!,
     bypassUrls: bypass.urls.map(_trimTrailingSlashes).toList(growable: false),
     attachToken: bypass.attachToken,

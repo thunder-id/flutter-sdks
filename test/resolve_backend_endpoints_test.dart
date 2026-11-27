@@ -36,6 +36,7 @@ void main() {
     expect(endpoints.signOut.toString(), 'https://app.example.com/api/auth/signout');
     expect(endpoints.proxy, 'https://app.example.com/api/auth/proxy');
     expect(endpoints.token.toString(), 'https://app.example.com/api/auth/token');
+    expect(endpoints.ouSwitch.toString(), 'https://app.example.com/api/auth/switch');
     expect(endpoints.apiBaseUrl, 'https://api.example.com');
     expect(endpoints.redirectUri, 'com.example.app://callback');
     expect(endpoints.bypassUrls, isEmpty);
@@ -54,6 +55,7 @@ void main() {
           signOut: '/auth/logout',
           proxy: '/auth/api/',
           token: '/auth/dp-token',
+          ouSwitch: '/auth/ou/switch',
           bypass: BackendBypass(urls: ['https://dp.example.com/api/'], attachToken: false),
         ),
       ),
@@ -66,6 +68,7 @@ void main() {
     expect(endpoints.signOut.toString(), 'https://app.example.com/auth/logout');
     expect(endpoints.proxy, 'https://app.example.com/auth/api');
     expect(endpoints.token.toString(), 'https://app.example.com/auth/dp-token');
+    expect(endpoints.ouSwitch.toString(), 'https://app.example.com/auth/ou/switch');
     expect(endpoints.bypassUrls, ['https://dp.example.com/api']);
     expect(endpoints.attachToken, false);
   });

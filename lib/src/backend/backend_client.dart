@@ -38,6 +38,14 @@ String? backendErrorOf(HttpResponseData response) {
   return error is String ? error : null;
 }
 
+/// The backend's refusal of a switch to another organization unit, with its OAuth `error` when it
+/// sent one.
+class BackendSwitchRefusal {
+  final String? error;
+
+  const BackendSwitchRefusal(this.error);
+}
+
 /// Talks to the app's backend when sign-in runs there: starts the session from the sign-in's
 /// one-time code, reads, refreshes, and ends it, and gets the access token for bypassed requests.
 /// The backend keeps the OAuth tokens; the app holds only an opaque session handle, in the native
@@ -184,7 +192,10 @@ class BackendClient {
   /// Builds the URL that starts sign-in at the backend, binding it to a new PKCE pair. Open it in
   /// a system browser session; the backend returns to the redirect URI with a one-time
   /// `session_code`, which [handleRedirectCallback] exchanges.
-  Future<String> buildSignInUrl() async {
+  ///
+  /// [organizationUnitId] bounds the sign-in to that organization unit: the backend receives it as
+  /// the `ouId` query parameter.
+  Future<String> buildSignInUrl({String? organizationUnitId}) async {
     final pkce = await _channel.invokeMap('generatePkce');
     final verifier = pkce['verifier'];
     final challenge = pkce['challenge'];
@@ -198,6 +209,7 @@ class BackendClient {
         'redirect_uri': endpoints.redirectUri,
         'code_challenge': challenge,
         'code_challenge_method': 'S256',
+        if (organizationUnitId != null) 'ouId': organizationUnitId,
       },
     ).toString();
   }
@@ -296,6 +308,37 @@ class BackendClient {
     _session = Future.value(const BackendSession.signedOut());
     _hasLoadedSession = true;
     await _clearStoredState();
+  }
+
+  // ── Organization units ────────────────────────────────────────────────────
+
+  /// Switches the backend's session to the organization unit [ouId], with no browser. The unit goes
+  /// in the query (`ouId`) and in a JSON body (`{"ouId": …}`), so the backend can read it from
+  /// either. On success the cached session is dropped, so the next read sees the new unit; on a
+  /// refusal the session stays as it was. `session_expired` refreshes the session once and
+  /// retries. A `401` left after that means the backend has no session to switch, so it is
+  /// reported as `login_required`, which signs out.
+  ///
+  /// Returns `null` when the backend switched, or its refusal.
+  Future<BackendSwitchRefusal?> switchOrganizationUnit(String ouId) async {
+    if (await _readHandle() == null) return const BackendSwitchRefusal('login_required');
+    final url = endpoints.ouSwitch.replace(
+      queryParameters: {...endpoints.ouSwitch.queryParameters, 'ouId': ouId},
+    );
+    final body = jsonEncode({'ouId': ouId});
+
+    var response = await _send('POST', url, body: body);
+    if (backendErrorOf(response) == 'session_expired') {
+      if (!await refresh()) return const BackendSwitchRefusal('login_required');
+      response = await _send('POST', url, body: body);
+    }
+    if (response.ok) {
+      _session = null;
+      return null;
+    }
+    final error = response.statusCode == 401 ? 'login_required' : _errorCode(response);
+    if (error == 'login_required') markSignedOut();
+    return BackendSwitchRefusal(error);
   }
 
   // ── Access token for bypassed requests ────────────────────────────────────
@@ -453,6 +496,14 @@ class BackendClient {
     _handleLoaded = true;
     await _channel.invoke<void>('deleteSecureValue', _storeArgs(_handleKey));
     await _channel.invoke<void>('deleteSecureValue', _storeArgs(_tokenKey));
+  }
+
+  /// The OAuth `error` of a backend answer, whatever its status.
+  String? _errorCode(HttpResponseData response) {
+    final data = response.data;
+    if (data is! Map) return null;
+    final error = data['error'];
+    return error is String && error.isNotEmpty ? error : null;
   }
 
   Future<HttpResponseData> _send(String method, Uri url, {String? body, bool attachHandle = true}) async {

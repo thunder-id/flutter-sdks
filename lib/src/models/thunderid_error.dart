@@ -25,6 +25,10 @@ enum ThunderIDErrorCode {
   invalidGrant,
   consentRequired,
 
+  /// The organization unit does not exist, or the application cannot be used from it. The server
+  /// does not tell the two apart.
+  organizationUnitUnavailable,
+
   /// The embedded flow execution expired, or already ended, so the server refused the step. The flow has to
   /// start again.
   flowExpired,
@@ -91,6 +95,7 @@ enum ThunderIDErrorCode {
     'MFA_FAILED': ThunderIDErrorCode.mfaFailed,
     'INVALID_GRANT': ThunderIDErrorCode.invalidGrant,
     'CONSENT_REQUIRED': ThunderIDErrorCode.consentRequired,
+    'ORGANIZATION_UNIT_UNAVAILABLE': ThunderIDErrorCode.organizationUnitUnavailable,
     'FLOW_EXPIRED': ThunderIDErrorCode.flowExpired,
     'USER_ALREADY_EXISTS': ThunderIDErrorCode.userAlreadyExists,
     'INVALID_INPUT': ThunderIDErrorCode.invalidInput,

@@ -44,6 +44,15 @@ class BackendEndpoints {
   /// Defaults to `/api/auth/token`.
   final String? token;
 
+  /// Switches the backend's session to another organization unit, with no browser. The SDK sends
+  /// `POST {ouSwitch}?ouId=<unit id>` with the same unit as a JSON body, `{"ouId": "<unit id>"}`,
+  /// so the backend can read it from either. Answer 2xx when the session was switched; otherwise
+  /// answer with a JSON body `{"error": "<OAuth error>"}` and keep the previous session. When the
+  /// backend needs the user (`interaction_required`, `login_required`, `consent_required`,
+  /// `account_selection_required`, or a `401`), the SDK signs in to the unit through [signIn]
+  /// instead. Defaults to `/api/auth/switch`.
+  final String? ouSwitch;
+
   /// Requests that skip the proxy and go straight from the app.
   final BackendBypass? bypass;
 
@@ -56,6 +65,7 @@ class BackendEndpoints {
     this.signOut,
     this.proxy,
     this.token,
+    this.ouSwitch,
     this.bypass,
   });
 }

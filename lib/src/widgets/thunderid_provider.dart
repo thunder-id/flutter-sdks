@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 
 import '../i18n/thunderid_i18n.dart';
 import '../management/thunderid_management_client.dart';
+import '../models/organization_unit_switch.dart';
 import '../models/preferences.dart';
 import '../models/thunderid_config.dart';
 import '../models/user.dart';
@@ -74,6 +75,10 @@ class ThunderIDState extends State<ThunderIDProvider> {
   bool get fetchUserProfileEnabled => widget.config.fetchUserProfile && widget.config.endpoints?.backend == null;
 
   ManagementResources? _managementResources;
+
+  /// Bumped whenever the session moves to another organization unit, so a profile read started
+  /// before that is not merged into the new unit's user.
+  int _profileGeneration = 0;
 
   /// Management operations, authorized with the signed-in user's access token. Available once
   /// [initialized] is true; see [ThunderIDClient.management].
@@ -149,6 +154,23 @@ class ThunderIDState extends State<ThunderIDProvider> {
     }
   }
 
+  /// Switches the session to the organization unit [ouId] with [ThunderIDClient.switchOrganizationUnit],
+  /// and on success replaces [user] with the user read again, so every widget below sees the new
+  /// unit without signing in again.
+  Future<OrganizationUnitSwitchResult> switchOrganizationUnit(
+    String ouId, {
+    SwitchOrganizationUnitOptions options = const SwitchOrganizationUnitOptions(),
+  }) async {
+    final result = await client.switchOrganizationUnit(ouId, options: options);
+    if (result is OrganizationUnitSwitched && mounted) {
+      // A profile read started before the switch belongs to the previous unit; its answer is dropped.
+      _profileGeneration++;
+      setState(() => _user = result.user);
+      _syncUserProfile();
+    }
+    return result;
+  }
+
   /// Merges [profile]'s attributes into the cached user's claims, so widgets reading
   /// [user] reflect a freshly saved edit without waiting for the next sign-in.
   void mergeUserProfile(UserProfile profile) {
@@ -166,8 +188,10 @@ class ThunderIDState extends State<ThunderIDProvider> {
   /// is off: a failed read leaves the status stale, not broken.
   Future<UserProfile?> reloadUserProfile() async {
     if (!fetchUserProfileEnabled) return null;
+    final generation = _profileGeneration;
     try {
       final profile = await client.getUserProfile();
+      if (generation != _profileGeneration) return null;
       mergeUserProfile(profile);
       return profile;
     } catch (_) {
@@ -182,8 +206,11 @@ class ThunderIDState extends State<ThunderIDProvider> {
   /// reports its own load failures.
   void _syncUserProfile() {
     if (!fetchUserProfileEnabled) return;
+    final generation = _profileGeneration;
     unawaited(
-      client.getUserProfile().then(mergeUserProfile).catchError((Object _) {}),
+      client.getUserProfile().then((profile) {
+        if (generation == _profileGeneration) mergeUserProfile(profile);
+      }).catchError((Object _) {}),
     );
   }
 

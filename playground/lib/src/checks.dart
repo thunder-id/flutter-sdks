@@ -231,6 +231,27 @@ final List<CheckDef> checkDefs = [
     },
   ),
   CheckDef(
+    id: 'ou-switch',
+    section: 'Authentication',
+    name: 'Switch organization unit',
+    api: 'client.switchOrganizationUnit()',
+    run: (sdk, config) async {
+      _requireSignedIn(sdk);
+      final ouId = sdk.defaultOuId;
+      if (ouId == null) throw const CheckSkipped('The signed-in user has no ouId claim.');
+      // Switching to the unit the session already belongs to exercises the whole path without
+      // leaving it.
+      final result = await _log.trace('switchOrganizationUnit', () => sdk.switchOrganizationUnit(ouId));
+      return switch (result) {
+        OrganizationUnitSwitched(:final user) => user.claims['ouId'] == ouId
+            ? CheckResult.pass('Switched to $ouId${sdk.client.isBackendMode() ? ' on the backend' : ''}')
+            : CheckResult.fail('The switched session reports ouId ${user.claims['ouId']}'),
+        OrganizationUnitSwitchSignInRequired() =>
+          const CheckResult.pass('The app-native switch needs the user: drive the returned flow with signIn()'),
+      };
+    },
+  ),
+  CheckDef(
     id: 'native',
     section: 'Authentication',
     name: 'Sign in (app-native flow)',
