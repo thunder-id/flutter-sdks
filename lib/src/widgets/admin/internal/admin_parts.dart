@@ -169,6 +169,28 @@ class AdminMuted extends StatelessWidget {
       );
 }
 
+/// A small label that marks a record, such as a personal agent in a list.
+class AdminBadge extends StatelessWidget {
+  final AdminContext ac;
+  final String label;
+
+  const AdminBadge({super.key, required this.ac, required this.label});
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+        label: label,
+        excludeSemantics: true,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+          decoration: BoxDecoration(
+            color: ac.colors.primary.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Text(label, style: TextStyle(color: ac.colors.primary, fontSize: 12)),
+        ),
+      );
+}
+
 /// An initials avatar for a managed identity, reusing [BaseUserAvatar]'s rendering.
 class AdminAvatar extends StatelessWidget {
   final String name;

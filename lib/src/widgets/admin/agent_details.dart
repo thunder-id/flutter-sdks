@@ -7,10 +7,12 @@ import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../management/management_display.dart';
+import '../../models/management/access_status.dart';
 import '../../models/management/administration.dart';
 import '../../models/management/agent.dart';
 import '../../models/management/group.dart';
 import '../../models/management/management_page.dart';
+import '../../models/personal_agent.dart';
 import '../../models/preferences.dart';
 import '../../state/management_resources.dart';
 import '../../state/resource_notifiers.dart';
@@ -108,6 +110,12 @@ class BaseAgentDetails extends StatelessWidget {
 
     final clientId = agent.clientId;
     final status = agent.status?.value;
+    // A suspension that names no party is the organization's, as the lifecycle actions read it.
+    final suspendedBy = switch (agent.status) {
+      final status? when status.value == AccessStatusValue.suspended =>
+        status.suspendedBy.isEmpty ? const [SuspensionAppliedBy.organization] : status.suspendedBy,
+      _ => const <String>[],
+    };
     final onLifecycle = onLifecycleAction;
     return AdminSection(
       ac: ac,
@@ -145,12 +153,18 @@ class BaseAgentDetails extends StatelessWidget {
             ac: ac,
             items: [
               (ac.t('admin.agents.details.type'), Text(agent.type)),
-              (ac.t('admin.agents.details.owner'), Text(agent.owner ?? ac.t('admin.agents.details.no_owner'))),
+              (ac.t('admin.agents.details.owner'), Text(agent.owner?.id ?? ac.t('admin.agents.details.no_owner'))),
+              if (agent.isPersonal) (ac.t('admin.agents.details.kind'), Text(ac.t('admin.agents.kind.personal'))),
               (ac.t('admin.common.columns.organization_unit'), Text(agent.ouHandle ?? agent.ouId)),
               if (status != null)
                 (
                   ac.t('admin.common.columns.status'),
                   Align(alignment: Alignment.centerLeft, child: AdminAccessStatusLabel(ac: ac, status: status)),
+                ),
+              if (suspendedBy.isNotEmpty)
+                (
+                  ac.t('admin.agents.details.suspension.title'),
+                  Text(suspendedBy.map((party) => _suspensionPartyLabel(ac, party)).join(', ')),
                 ),
               if (clientId != null)
                 (
@@ -197,6 +211,16 @@ class BaseAgentDetails extends StatelessWidget {
     );
   }
 }
+
+/// The translated name of a party holding an agent suspended, or its raw value when this SDK does
+/// not know it.
+String _suspensionPartyLabel(AdminContext ac, String party) => switch (party) {
+      SuspensionAppliedBy.organization ||
+      SuspensionAppliedBy.owner ||
+      SuspensionAppliedBy.cascade =>
+        ac.t('admin.agents.details.suspension.$party'),
+      _ => party,
+    };
 
 /// Agent details that loads the agent, its groups, and its roles through the management API.
 ///
@@ -278,7 +302,8 @@ class _AgentDetailsState extends AdminConnectedState<AgentDetails> {
               lifecycle?.error(ac),
       isDeleting: delete?.isLoading ?? false,
       onDelete: widget.deletable && delete != null ? () => unawaited(delete.mutate(widget.agentId)) : null,
-      lifecycleActions: lifecycle?.actions(agent?.status?.value) ?? const [],
+      lifecycleActions:
+          lifecycle?.actions(agent?.status?.value, appliedBy: agent?.status?.details?.appliedBy) ?? const [],
       onLifecycleAction: lifecycle?.handler(widget.agentId),
       isRunningLifecycleAction: lifecycle?.isRunning ?? false,
       actions: widget.actions,

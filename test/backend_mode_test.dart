@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:thunderid_flutter/src/models/backend.dart';
 import 'package:thunderid_flutter/src/models/flow_models.dart';
 import 'package:thunderid_flutter/src/models/http_request.dart';
+import 'package:thunderid_flutter/src/models/personal_agent.dart';
 import 'package:thunderid_flutter/src/models/thunderid_config.dart';
 import 'package:thunderid_flutter/src/models/thunderid_error.dart';
 import 'package:thunderid_flutter/src/models/token_exchange_config.dart';
@@ -602,6 +603,21 @@ void main() {
       await expectLater(client.getUserProfile(), notSupported);
       await expectLater(client.reInitialize(baseUrl: 'https://other.example.com'), notSupported);
       expect(log.any((c) => const {'signIn', 'signUp', 'exchangeToken', 'getUserProfile'}.contains(c.method)), false);
+    });
+
+    test('personal agent operations are refused', () async {
+      await signedIn();
+      final notSupported = throwsCode(ThunderIDErrorCode.operationNotSupported);
+      const request = UpdateMeAgentRequest(attributes: {'name': 'Spending'}, grantTypes: [], redirectUris: []);
+
+      await expectLater(client.getMeAgents(), notSupported);
+      await expectLater(client.getMeAgent('pa-1'), notSupported);
+      await expectLater(client.updateMeAgent('pa-1', request), notSupported);
+      await expectLater(client.deleteMeAgent('pa-1'), notSupported);
+      await expectLater(client.suspendMeAgent('pa-1'), notSupported);
+      await expectLater(client.unsuspendMeAgent('pa-1'), notSupported);
+      await expectLater(client.suspendAllMeAgents(), notSupported);
+      expect(log.any((c) => c.method.contains('MeAgent')), false);
     });
   });
 }

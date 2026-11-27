@@ -37,6 +37,12 @@ abstract final class ManagementQueryKeys {
   static const String agent = 'agent';
   static const String agents = 'agents';
   static const String agentTypes = 'agent-types';
+
+  /// One of the signed-in user's own agents.
+  static const String meAgent = 'me-agent';
+
+  /// The signed-in user's own agents.
+  static const String meAgents = 'me-agents';
   static const String application = 'application';
   static const String applications = 'applications';
   static const String administrationFlows = 'administration-flows';
