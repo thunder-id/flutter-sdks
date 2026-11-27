@@ -1,3 +1,10 @@
+## 1.9.1
+
+### 🐛 Bug Fixes
+* Report a failed passkey prompt to the flow by @KaveeshaPiumini in https://github.com/thunder-id/flutter-sdks/pull/79
+
+**Full Changelog**: https://github.com/thunder-id/flutter-sdks/compare/v1.9.0...v1.9.1
+
 ## 1.9.0
 
 - Let administrators send users a link to verify their email address
