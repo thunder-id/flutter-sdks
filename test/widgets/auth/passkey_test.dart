@@ -99,8 +99,89 @@ void main() {
   );
 
   testWidgets(
-    'surfaces a native passkey error instead of hanging on a stale form',
+    'reports a failed passkey prompt to the flow and shows the step it returns',
     (tester) async {
+      final signInPayloads = <Map<String, Object?>>[];
+
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+        _sdkChannel,
+        (call) async {
+          switch (call.method) {
+            case 'initialize':
+              return true;
+            case 'isSignedIn':
+              return false;
+            case 'performPasskeyAuthentication':
+              throw PlatformException(code: 'PASSKEY_CANCELLED', message: 'The user cancelled the passkey prompt');
+            case 'signIn':
+              final args = call.arguments as Map<Object?, Object?>;
+              signInPayloads.add((args['payload'] as Map<Object?, Object?>).cast<String, Object?>());
+              if (signInPayloads.length == 1) {
+                return <String, dynamic>{
+                  'flowId': 'flow-1',
+                  'flowStatus': 'PROMPT_ONLY',
+                  'challengeToken': 'token-1',
+                  'data': {
+                    'additionalData': {
+                      'passkeyChallenge': '{"challenge":"abc","rpId":"localhost"}',
+                    },
+                  },
+                };
+              }
+              return <String, dynamic>{
+                'flowId': 'flow-1',
+                'flowStatus': 'INCOMPLETE',
+                'stepId': 'choose_auth',
+                'challengeToken': 'token-2',
+                'failureReason': 'Passkey authentication failed',
+                'error': {
+                  'message': {'key': 'passkey_auth_failed', 'defaultValue': 'Passkey authentication failed'},
+                },
+                'data': {
+                  'actions': [
+                    {'id': 'action_passkey', 'ref': 'action_passkey'},
+                  ],
+                },
+              };
+            default:
+              return null;
+          }
+        },
+      );
+
+      var errorCalled = false;
+      SignInState? latest;
+      await tester.pumpWidget(_providerWidget(
+        child: BaseSignIn(
+          applicationId: 'app-1',
+          onError: () => errorCalled = true,
+          builder: (_, state) {
+            latest = state;
+            return const SizedBox();
+          },
+        ),
+      ),);
+      await tester.pumpAndSettle();
+
+      expect(signInPayloads.length, 2);
+      expect(signInPayloads[1]['flowId'], 'flow-1');
+      expect(signInPayloads[1]['challengeToken'], 'token-1');
+      expect(
+        (signInPayloads[1]['inputs'] as Map<Object?, Object?>).cast<String, Object?>(),
+        {'passkeyError': 'PASSKEY_CANCELLED'},
+      );
+      expect(latest?.currentStep?.stepId, 'choose_auth');
+      expect(latest?.error, 'Passkey authentication failed');
+      expect(latest?.errorMessage?.key, 'passkey_auth_failed');
+      expect(errorCalled, false);
+    },
+  );
+
+  testWidgets(
+    'surfaces the native passkey error when reporting the failed prompt fails',
+    (tester) async {
+      var signInCallCount = 0;
+
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
         _sdkChannel,
         (call) async {
@@ -115,6 +196,10 @@ void main() {
                 message: 'Passkey ceremonies are not yet available on this platform',
               );
             case 'signIn':
+              signInCallCount++;
+              if (signInCallCount > 1) {
+                throw PlatformException(code: 'SERVER_ERROR', message: 'Server error');
+              }
               return <String, dynamic>{
                 'flowId': 'flow-1',
                 'flowStatus': 'PROMPT_ONLY',
