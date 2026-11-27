@@ -28,6 +28,10 @@ dependencies:
 
 The native iOS and Android ThunderID SDKs are pulled in automatically as transitive dependencies, no extra setup needed.
 
+## App-native sign-in
+
+`SignIn` and `ThunderIDClient.signIn` run the application's flow in the app, through the native ThunderID Android and iOS SDKs. Set both `applicationId` and `clientId`: when a flow completes, the native SDK exchanges its assertion at the token endpoint (`urn:ietf:params:oauth:grant-type:token-exchange`, no scope) for the access token it keeps, and keeps the assertion as the ID token. The application needs that grant type. Sign-in, sign-up and the embedded organization unit switch do not start a flow without a `clientId`. An application without the grant fails with `INVALID_CONFIGURATION`, and the previous session, if any, stays.
+
 ## Playground
 
 [`playground/`](playground/README.md) is a Flutter app that runs every SDK capability and widget against
