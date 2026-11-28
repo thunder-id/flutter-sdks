@@ -321,16 +321,25 @@ final List<ComponentDef> componentDefs = [
     id: 'changeCredential',
     name: 'ChangeCredential',
     category: 'Presentation',
-    defaults: const {'attribute': 'password', 'showDivider': true},
-    controls: const [ControlDef.text('attribute'), ControlDef.toggle('showDivider')],
+    defaults: const {'attribute': 'password', 'showDivider': true, 'appHandlesSignIn': false},
+    controls: const [
+      ControlDef.text('attribute'),
+      ControlDef.toggle('showDivider'),
+      ControlDef.toggle('appHandlesSignIn'),
+    ],
     stories: const [StoryDef('password', 'Password')],
     build: (context, s) => ChangeCredential(
       attribute: s.text('attribute'),
       showDivider: s.flag('showDivider'),
       onSuccess: () => s.emit('onSuccess'),
+      // Off: the widget signs the user in again and retries. On: the app is told instead.
+      onReauthenticationRequired: s.flag('appHandlesSignIn')
+          ? (maxAge) => s.emit('onReauthenticationRequired: maxAge=$maxAge')
+          : null,
     ),
     code: (s) => 'ChangeCredential(\n  attribute: ${lit(s.text('attribute'))},\n'
-        '${s.flag('showDivider') ? '' : '  showDivider: false,\n'}  onSuccess: () {},\n)',
+        '${s.flag('showDivider') ? '' : '  showDivider: false,\n'}  onSuccess: () {},\n'
+        '${s.flag('appHandlesSignIn') ? '  onReauthenticationRequired: (maxAge) {},\n' : ''})',
   ),
   ComponentDef(
     id: 'languageSwitcher',

@@ -7,9 +7,11 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../i18n/thunderid_i18n.dart';
 import '../../models/attribute_verification.dart';
+import '../../models/thunderid_error.dart';
 import '../../models/user.dart';
 import '../../models/user_profile.dart' as model;
 import '../internal/account_style.dart';
+import '../internal/step_up.dart';
 import '../thunderid_provider.dart';
 import 'user_profile_verification.dart';
 import 'verify_attribute.dart';
@@ -406,6 +408,9 @@ class UserProfile extends StatelessWidget {
   final Map<String, List<String>> attributeMapping;
   final VoidCallback? onSaved;
   final VoidCallback? onError;
+
+  /// See [BaseUserProfile.onReauthenticationRequired].
+  final void Function(int? maxAge)? onReauthenticationRequired;
   final String verificationFlowHandle;
 
   const UserProfile({
@@ -413,6 +418,7 @@ class UserProfile extends StatelessWidget {
     this.attributeMapping = const {},
     this.onSaved,
     this.onError,
+    this.onReauthenticationRequired,
     this.verificationFlowHandle = AttributeVerification.defaultFlowHandle,
   });
 
@@ -424,6 +430,7 @@ class UserProfile extends StatelessWidget {
       attributeMapping: attributeMapping,
       onSaved: onSaved,
       onError: onError,
+      onReauthenticationRequired: onReauthenticationRequired,
       builder: (context, state) {
         if (state.isLoading && state.profile == null) {
           return const Center(child: CircularProgressIndicator());
@@ -827,10 +834,20 @@ class _VerifyButton extends StatelessWidget {
 }
 
 /// Unstyled base variant (spec §8.3).
+///
+/// Changing an `email` or `mobile` attribute needs a recent sign-in. When the server asks for
+/// one, the widget signs the user in again (in the browser for a redirect session, by running the
+/// sign-in flow in a dialog for an app-native one) and saves the change once more, unless
+/// [onReauthenticationRequired] is set.
 class BaseUserProfile extends StatefulWidget {
   final Map<String, List<String>> attributeMapping;
   final VoidCallback? onSaved;
   final VoidCallback? onError;
+
+  /// Called when the server asks the user to sign in again before saving a change, with the most
+  /// seconds the new sign-in may be old, when the server gave it. When set, the widget calls it
+  /// instead of signing the user in again itself, and does not retry.
+  final void Function(int? maxAge)? onReauthenticationRequired;
   final Widget Function(BuildContext context, UserProfileState state) builder;
 
   const BaseUserProfile({
@@ -839,6 +856,7 @@ class BaseUserProfile extends StatefulWidget {
     this.attributeMapping = const {},
     this.onSaved,
     this.onError,
+    this.onReauthenticationRequired,
   });
 
   @override
@@ -950,7 +968,9 @@ class _BaseUserProfileState extends State<BaseUserProfile> {
   ) async {
     setState(() => _isLoading = true);
     try {
-      final client = ThunderIDProvider.of(context).client;
+      final thunder = ThunderIDProvider.of(context);
+      final client = thunder.client;
+      final reauthenticationMessage = thunder.i18n.resolve('userProfile.error.reauthentication');
       final fieldPayload = buildUpdatePayload(
         name,
         value,
@@ -961,7 +981,13 @@ class _BaseUserProfileState extends State<BaseUserProfile> {
         _profile?.attributes ?? const {},
         fieldPayload,
       );
-      final updated = await client.updateUserProfile(payload);
+      // The pending change stays in memory for the one retry after a re-sign-in.
+      final updated = await runWithStepUp<model.UserProfile>(
+        reauthenticator: widget.onReauthenticationRequired == null
+            ? () => reauthenticatorFor(context, message: reauthenticationMessage)
+            : null,
+        operation: () => client.updateUserProfile(payload),
+      );
       if (!mounted) return;
       _applyProfile(updated);
       setState(() {
@@ -974,11 +1000,15 @@ class _BaseUserProfileState extends State<BaseUserProfile> {
       widget.onSaved?.call();
     } catch (e) {
       if (!mounted) return;
-      setState(
-        () => _fieldErrors[name] = ThunderIDProvider.of(context)
-            .i18n
-            .resolve('userProfile.error.save'),
-      );
+      final needsSignIn =
+          e is ReauthenticationFailed || (e is IAMException && e.code == ThunderIDErrorCode.stepUpRequired);
+      final key = isAnotherAccount(e)
+          ? 'reauthentication.differentUser'
+          : (needsSignIn ? 'userProfile.error.reauthentication' : 'userProfile.error.save');
+      setState(() => _fieldErrors[name] = ThunderIDProvider.of(context).i18n.resolve(key));
+      if (e is IAMException && e.code == ThunderIDErrorCode.stepUpRequired) {
+        widget.onReauthenticationRequired?.call(e.authenticationChallenge?.maxAge);
+      }
       widget.onError?.call();
     } finally {
       if (mounted) setState(() => _isLoading = false);

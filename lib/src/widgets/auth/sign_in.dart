@@ -45,20 +45,39 @@ class SignIn extends StatelessWidget {
   final void Function(User user)? onSuccess;
   final VoidCallback? onError;
 
+  final bool _reauthentication;
+  final int? _reauthenticationMaxAge;
+  final void Function(Object error)? _onException;
+
   const SignIn({
     super.key,
     required this.applicationId,
     this.onSuccess,
     this.onError,
-  });
+  })  : _reauthentication = false,
+        _reauthenticationMaxAge = null,
+        _onException = null;
+
+  const SignIn._reauthentication({
+    required this.applicationId,
+    required int? maxAge,
+    this.onSuccess,
+    this.onError,
+    void Function(Object error)? onException,
+  })  : _reauthentication = true,
+        _reauthenticationMaxAge = maxAge,
+        _onException = onException;
 
   @override
   Widget build(BuildContext context) {
     final state = ThunderIDProvider.of(context);
-    return BaseSignIn(
+    return BaseSignIn._all(
       applicationId: applicationId,
       onSuccess: onSuccess,
       onError: onError,
+      reauthentication: _reauthentication,
+      reauthenticationMaxAge: _reauthenticationMaxAge,
+      onException: _onException,
       builder: (ctx, signInState) => FlowForm(
         applicationId: applicationId,
         currentStep: signInState.currentStep,
@@ -81,13 +100,31 @@ class BaseSignIn extends StatefulWidget {
   final VoidCallback? onError;
   final Widget Function(BuildContext context, SignInState state) builder;
 
+  final bool _reauthentication;
+  final int? _reauthenticationMaxAge;
+  final void Function(Object error)? _onException;
+
   const BaseSignIn({
     super.key,
     required this.applicationId,
     required this.builder,
     this.onSuccess,
     this.onError,
-  });
+  })  : _reauthentication = false,
+        _reauthenticationMaxAge = null,
+        _onException = null;
+
+  const BaseSignIn._all({
+    required this.applicationId,
+    required this.builder,
+    required bool reauthentication,
+    required int? reauthenticationMaxAge,
+    required void Function(Object error)? onException,
+    this.onSuccess,
+    this.onError,
+  })  : _reauthentication = reauthentication,
+        _reauthenticationMaxAge = reauthenticationMaxAge,
+        _onException = onException;
 
   @override
   State<BaseSignIn> createState() => _BaseSignInState();
@@ -113,6 +150,12 @@ class _BaseSignInState extends State<BaseSignIn> {
   String get _logTag => '[${ThunderIDProvider.of(context).widget.config.vendor}SignIn]';
 
   bool _isFlowRestarted = false;
+
+  EmbeddedFlowRequestConfig get _request => EmbeddedFlowRequestConfig(
+        applicationId: widget.applicationId,
+        reauthentication: widget._reauthentication,
+        maxAge: widget._reauthenticationMaxAge,
+      );
 
   // Starts again after the current submit settles, so its loading state doesn't end the new flow's.
   late final FlowExpiry _flowExpiry = FlowExpiry(restart: () => Future.microtask(_restartFlow));
@@ -147,7 +190,7 @@ class _BaseSignInState extends State<BaseSignIn> {
       final state = ThunderIDProvider.of(context);
       final response = await state.client.signIn(
         payload: const EmbeddedSignInPayload(actionId: 'init'),
-        request: EmbeddedFlowRequestConfig(applicationId: widget.applicationId),
+        request: _request,
       );
       if (kDebugMode) {
         final inputList = (response.data?['inputs'] as List?) ?? const [];
@@ -157,6 +200,7 @@ class _BaseSignInState extends State<BaseSignIn> {
       await _finishResponse(response, actionId: 'init', flowId: response.flowId ?? '');
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
+      widget._onException?.call(e);
       widget.onError?.call();
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -171,7 +215,7 @@ class _BaseSignInState extends State<BaseSignIn> {
     try {
       final response = await ThunderIDProvider.of(context).client.signIn(
         payload: EmbeddedSignInPayload(flowId: flowId, actionId: actionId, inputs: inputs, challengeToken: _currentStep?.challengeToken),
-        request: EmbeddedFlowRequestConfig(applicationId: widget.applicationId),
+        request: _request,
       );
       await _finishResponse(response, actionId: actionId, flowId: flowId);
     } catch (e, st) {
@@ -181,6 +225,7 @@ class _BaseSignInState extends State<BaseSignIn> {
       }
       debugPrint('$_logTag _submit error: $e\n$st');
       if (mounted) setState(() => _error = e.toString());
+      widget._onException?.call(e);
       widget.onError?.call();
     } finally {
       _autoAdvancing = false;
@@ -236,7 +281,7 @@ class _BaseSignInState extends State<BaseSignIn> {
               inputs: const {},
               challengeToken: response.challengeToken,
             ),
-            request: EmbeddedFlowRequestConfig(applicationId: widget.applicationId),
+            request: _request,
           );
         }
       }
@@ -340,10 +385,11 @@ class _BaseSignInState extends State<BaseSignIn> {
             inputs: inputs,
             challengeToken: current.challengeToken,
           ),
-          request: EmbeddedFlowRequestConfig(applicationId: widget.applicationId),
+          request: _request,
         );
       } catch (e) {
         if (mounted) setState(() => _error = (ceremonyError ?? e).toString());
+        widget._onException?.call(e);
         widget.onError?.call();
         return null;
       }
@@ -398,3 +444,21 @@ class _BaseSignInState extends State<BaseSignIn> {
         ),
       );
 }
+
+/// The sign-in form, run to sign the signed-in user in again with [maxAge]: see
+/// `EmbeddedFlowRequestConfig.reauthentication`. [onException] gets the error when a request of the
+/// flow fails, before [onError]. Not exported.
+Widget reauthenticationSignIn({
+  required String applicationId,
+  required int? maxAge,
+  required void Function(User user) onSuccess,
+  required VoidCallback onError,
+  required void Function(Object error) onException,
+}) =>
+    SignIn._reauthentication(
+      applicationId: applicationId,
+      maxAge: maxAge,
+      onSuccess: onSuccess,
+      onError: onError,
+      onException: onException,
+    );

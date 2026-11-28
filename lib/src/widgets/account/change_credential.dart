@@ -6,10 +6,14 @@ import 'package:material_ui/material_ui.dart';
 import '../../i18n/thunderid_i18n.dart';
 import '../../models/thunderid_error.dart';
 import '../internal/account_style.dart';
+import '../internal/step_up.dart';
 import '../thunderid_provider.dart';
 
 /// The form field a credential-update failure belongs to.
 enum CredentialField {
+  /// The current value is missing or does not match the credential the user holds.
+  currentValue,
+
   /// The new value failed a server-side check.
   newValue,
 
@@ -19,8 +23,8 @@ enum CredentialField {
 
 /// The derived state a change-credential form needs to render and gate submission.
 ///
-/// Mirrors the Android/iOS SDKs: there is deliberately no current-value field, since the
-/// self-service write path does not verify the account's existing value today.
+/// The current value is optional and does not affect validity, so a user who has not set the
+/// credential yet can set a first one.
 class CredentialFormEvaluation {
   final bool confirmMatches;
   final bool meetsPolicy;
@@ -67,10 +71,20 @@ CredentialFormEvaluation evaluateCredentialForm(
   );
 }
 
-/// Maps a failure from the credential write path onto the field that caused it. `invalidInput`
-/// is the new value failing a server-side check.
-CredentialField mapCredentialError(ThunderIDErrorCode code) =>
-    code == ThunderIDErrorCode.invalidInput ? CredentialField.newValue : CredentialField.form;
+const _currentRequiredCode = 'USR-1047';
+const _currentInvalidCode = 'USR-1048';
+
+/// Maps a failure from the credential write path onto the field that caused it. The server
+/// codes `USR-1047` (current value missing) and `USR-1048` (current value does not match) belong
+/// to the current value, `AUTH-4011` (sign in again) to the form, and any other `invalidInput` is
+/// the new value failing a server-side check.
+CredentialField mapCredentialError(ThunderIDErrorCode code, {String? serverCode}) {
+  if (serverCode == _currentRequiredCode || serverCode == _currentInvalidCode) {
+    return CredentialField.currentValue;
+  }
+  if (serverCode == AuthenticationChallenge.recentAuthenticationRequiredCode) return CredentialField.form;
+  return code == ThunderIDErrorCode.invalidInput ? CredentialField.newValue : CredentialField.form;
+}
 
 /// Substitutes `{credential}`/`{credentialLower}` into a translation template.
 String substituteCredential(String template, String displayName) => template
@@ -99,6 +113,7 @@ class ChangeCredentialState {
   const ChangeCredentialState._(this._owner);
 
   String get credentialDisplayName => _owner._displayName;
+  String get currentValue => _owner._currentValue;
   String get newValue => _owner._newValue;
   String get confirmValue => _owner._confirmValue;
   String? get error => _owner._error;
@@ -106,11 +121,15 @@ class ChangeCredentialState {
   bool get success => _owner._success;
   bool get unavailable => _owner._unavailable;
 
+  /// Set when the last submit failed because the user has to sign in again (`AUTH-4011`).
+  AuthenticationChallenge? get authenticationChallenge => _owner._authenticationChallenge;
+
   CredentialFormEvaluation get evaluation =>
       evaluateCredentialForm(_owner._newValue, _owner._confirmValue, _owner._regex);
 
   String? fieldError(CredentialField field) => _owner._fieldErrors[field];
 
+  void onCurrentValueChanged(String value) => _owner._setCurrentValue(value);
   void onNewValueChanged(String value) => _owner._setNewValue(value);
   void onConfirmValueChanged(String value) => _owner._setConfirmValue(value);
 
@@ -127,12 +146,23 @@ class ChangeCredentialState {
 /// Headless change-credential form (unstyled variant). Fetches the schema-derived policy for
 /// [attribute], holds the network call and error routing, and hands its [ChangeCredentialState]
 /// to [builder], mirroring the [BaseUserProfile] split.
+///
+/// The current value is sent only when filled. The server checks it when the user holds the
+/// credential, and asks for a recent sign-in when the user sets a first one; the form then signs
+/// the user in again and retries once (see [onReauthenticationRequired]).
 class BaseChangeCredential extends StatefulWidget {
   final String attribute;
   final String? credentialDisplayName;
   final String? policyRegex;
   final VoidCallback? onSuccess;
   final VoidCallback? onError;
+
+  /// Called when the server asks the user to sign in again before setting the credential, with
+  /// the most seconds the new sign-in may be old, when the server gave it. When set, the form
+  /// calls it instead of signing the user in again itself, and does not retry. When not set, the
+  /// form signs the user in again (in the browser for a redirect session, by running the sign-in
+  /// flow in a dialog for an app-native one) and retries the change once.
+  final void Function(int? maxAge)? onReauthenticationRequired;
   final Widget Function(BuildContext context, ChangeCredentialState state) builder;
 
   const BaseChangeCredential({
@@ -142,6 +172,7 @@ class BaseChangeCredential extends StatefulWidget {
     this.policyRegex,
     this.onSuccess,
     this.onError,
+    this.onReauthenticationRequired,
     required this.builder,
   });
 
@@ -151,6 +182,7 @@ class BaseChangeCredential extends StatefulWidget {
 
 class _BaseChangeCredentialState extends State<BaseChangeCredential> {
   late String _displayName = widget.credentialDisplayName ?? titleCaseCredential(widget.attribute);
+  String _currentValue = '';
   String _newValue = '';
   String _confirmValue = '';
   String? _error;
@@ -158,6 +190,7 @@ class _BaseChangeCredentialState extends State<BaseChangeCredential> {
   bool _success = false;
   bool _unavailable = false;
   String? _regex;
+  AuthenticationChallenge? _authenticationChallenge;
   final Map<CredentialField, String> _fieldErrors = {};
 
   @override
@@ -193,21 +226,47 @@ class _BaseChangeCredentialState extends State<BaseChangeCredential> {
     setState(() {
       _error = null;
       _fieldErrors.clear();
+      _authenticationChallenge = null;
       _success = false;
       _loading = true;
     });
+    // The pending change stays in memory for the one retry after a re-sign-in.
+    final currentValue = _currentValue;
+    final newValue = _newValue;
+    final reauthenticationMessage =
+        translateCredential(thunder.i18n, _displayName, 'changeCredential.reauthentication.error');
     try {
-      await thunder.client.updateUserCredentials(attribute: widget.attribute, newValue: _newValue);
+      await runWithStepUp<void>(
+        reauthenticator: widget.onReauthenticationRequired == null
+            ? () => reauthenticatorFor(context, message: reauthenticationMessage)
+            : null,
+        operation: () => thunder.client.updateUserCredentials(
+          attribute: widget.attribute,
+          currentValue: currentValue,
+          newValue: newValue,
+        ),
+      );
       if (!mounted) return;
       setState(() {
+        _currentValue = '';
         _newValue = '';
         _confirmValue = '';
         _success = true;
       });
       widget.onSuccess?.call();
+    } on ReauthenticationFailed catch (failure) {
+      if (!mounted) return;
+      setState(() {
+        _error = isAnotherAccount(failure)
+            ? thunder.i18n.resolve('reauthentication.differentUser')
+            : translateCredential(thunder.i18n, _displayName, 'changeCredential.reauthentication.error');
+      });
+      widget.onError?.call();
     } on IAMException catch (e) {
       if (!mounted) return;
-      setState(() => _applyError(thunder.i18n, e.code));
+      setState(() => _applyError(thunder.i18n, e));
+      final challenge = _authenticationChallenge;
+      if (challenge != null) widget.onReauthenticationRequired?.call(challenge.maxAge);
       widget.onError?.call();
     } catch (_) {
       if (!mounted) return;
@@ -220,19 +279,39 @@ class _BaseChangeCredentialState extends State<BaseChangeCredential> {
     }
   }
 
-  void _applyError(ThunderIDI18n i18n, ThunderIDErrorCode code) {
-    final message = translateCredential(i18n, _displayName, 'changeCredential.generic.error');
-    if (mapCredentialError(code) == CredentialField.newValue) {
-      _fieldErrors[CredentialField.newValue] = message;
-    } else {
-      _error = message;
+  void _applyError(ThunderIDI18n i18n, IAMException e) {
+    final serverCode = e.serverError?.code;
+    final challenge = e.authenticationChallenge;
+    if (challenge != null || serverCode == AuthenticationChallenge.recentAuthenticationRequiredCode) {
+      _authenticationChallenge = challenge ??
+          const AuthenticationChallenge(error: AuthenticationChallenge.insufficientUserAuthentication);
+      _error = translateCredential(i18n, _displayName, 'changeCredential.reauthentication.error');
+      return;
+    }
+    final message = e.serverError?.readableMessage ??
+        translateCredential(i18n, _displayName, 'changeCredential.generic.error');
+    switch (mapCredentialError(e.code, serverCode: serverCode)) {
+      case CredentialField.currentValue:
+        _fieldErrors[CredentialField.currentValue] = translateCredential(
+          i18n,
+          _displayName,
+          serverCode == _currentRequiredCode
+              ? 'changeCredential.current.required.error'
+              : 'changeCredential.current.invalid.error',
+        );
+      case CredentialField.newValue:
+        _fieldErrors[CredentialField.newValue] = message;
+      case CredentialField.form:
+        _error = message;
     }
   }
 
+  void _setCurrentValue(String value) => setState(() => _currentValue = value);
   void _setNewValue(String value) => setState(() => _newValue = value);
   void _setConfirmValue(String value) => setState(() => _confirmValue = value);
 
   void _resetValues() => setState(() {
+        _currentValue = '';
         _newValue = '';
         _confirmValue = '';
       });
@@ -245,7 +324,8 @@ class _BaseChangeCredentialState extends State<BaseChangeCredential> {
 
 /// Styled change-credential row (spec §8.3 styled variant), presented the same way as a
 /// [UserProfile] field row. Tapping its Update link pushes a full-screen form collecting the
-/// new value and its confirmation.
+/// current value, the new value and its confirmation. The current value is optional, so a user
+/// who has not set the credential yet can set a first one.
 ///
 /// The display name always comes from the schema's `displayName` for [attribute] (falling back
 /// to the title-cased attribute name). Rename it from the ThunderID console rather than
@@ -255,6 +335,9 @@ class ChangeCredential extends StatelessWidget {
   final String attribute;
   final VoidCallback? onSuccess;
 
+  /// See [BaseChangeCredential.onReauthenticationRequired].
+  final void Function(int? maxAge)? onReauthenticationRequired;
+
   /// Whether to draw the row's bottom divider, matching [UserProfile]'s field rows. Set to
   /// `false` on the last credential row in a list to avoid a trailing divider.
   final bool showDivider;
@@ -263,6 +346,7 @@ class ChangeCredential extends StatelessWidget {
     super.key,
     this.attribute = 'password',
     this.onSuccess,
+    this.onReauthenticationRequired,
     this.showDivider = true,
   });
 
@@ -272,6 +356,7 @@ class ChangeCredential extends StatelessWidget {
     return BaseChangeCredential(
       attribute: attribute,
       onSuccess: onSuccess,
+      onReauthenticationRequired: onReauthenticationRequired,
       builder: (context, state) {
         return ThunderAccountRow(
           label: state.credentialDisplayName,
@@ -351,6 +436,31 @@ class _ChangeCredentialEditPageState extends State<_ChangeCredentialEditPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          ThunderAccountField(
+            label: translateCredential(
+              i18n,
+              state.credentialDisplayName,
+              'changeCredential.current.label',
+            ),
+            identifier: 'thunderid-field-currentCredential',
+            obscureText: true,
+            placeholder: translateCredential(
+              i18n,
+              state.credentialDisplayName,
+              'changeCredential.current.placeholder',
+            ),
+            helperText: translateCredential(
+              i18n,
+              state.credentialDisplayName,
+              'changeCredential.current.hint',
+            ),
+            errorText: state.fieldError(CredentialField.currentValue),
+            onChanged: (value) {
+              state.onCurrentValueChanged(value);
+              setState(() {});
+            },
+          ),
+          const SizedBox(height: 16),
           ThunderAccountField(
             label:
                 translateCredential(i18n, state.credentialDisplayName, 'changeCredential.new.label'),

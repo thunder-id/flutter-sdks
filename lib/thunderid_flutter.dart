@@ -110,7 +110,7 @@ export 'src/widgets/auth/callback.dart';
 export 'src/widgets/auth/guards/loading.dart';
 export 'src/widgets/auth/guards/signed_in.dart';
 export 'src/widgets/auth/guards/signed_out.dart';
-export 'src/widgets/auth/sign_in.dart';
+export 'src/widgets/auth/sign_in.dart' hide reauthenticationSignIn;
 export 'src/widgets/auth/sign_up.dart';
 export 'src/widgets/common/language_switcher.dart';
 export 'src/widgets/common/logo/avatar_logo.dart';

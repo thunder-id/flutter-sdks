@@ -83,11 +83,7 @@ SDK sets `Semantics.identifier` alongside the key. It resolves the field's serve
 `identifier` rather than its `ref`, which is what keeps one set of selectors working across iOS,
 Android and Flutter.
 
-**`change-credential.yaml` actually changes the test user's password.** The self-service
-credential write path has no "current value" to verify against, so there is nothing to gate the
-change behind. The flow changes it to a temporary value and back to `TestPassword@123` before
-finishing. If a run fails between those two steps, `e2e_mobile_user` is left on the temporary
-password until a re-run of `change-credential.yaml` changes it back.
+**`change-credential.yaml` actually changes the test user's password.** It gives the current password, changes it to a temporary value, signs in again with that value (a change ends the user's sessions and revokes their tokens), and changes it back to `TestPassword@123` before finishing. If a run fails between those two changes, `e2e_mobile_user` is left on the temporary password until the server is provisioned again.
 
 **`npx thunderid` cannot be used in CI.** It renders an interactive TUI and aborts with
 `bubbletea: could not open TTY` whenever stdout is not a terminal. `run-e2e.sh` downloads the
