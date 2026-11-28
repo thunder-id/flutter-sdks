@@ -180,9 +180,32 @@ class ThunderIDMethodHandler(private val context: Context) {
                 }
                 "updateUserCredentials" -> {
                     val attribute = args["attribute"] as? String ?: "password"
+                    val currentValue = (args["currentValue"] as? String)?.takeIf { it.isNotEmpty() }
                     val newValue = args["newValue"] as? String ?: ""
-                    client.updateUserCredentials(attribute, newValue)
+                    client.updateUserCredentials(
+                        attribute = attribute,
+                        currentValue = currentValue,
+                        newValue = newValue,
+                    )
                     result.success(null)
+                }
+                "reauthenticate" -> {
+                    // The native SDK checks the new ID token's subject before it replaces the session.
+                    val maxAge = (args["maxAge"] as? Number)?.toInt()
+                    val user =
+                        client.reauthenticate(maxAge) { url ->
+                            FederatedAuthSession.launch(activity ?: context, url).toString()
+                        }
+                    result.success(encodeUser(user))
+                }
+                "reauthenticationMethod" -> {
+                    val method =
+                        when (client.reauthenticationMethod()) {
+                            ReauthenticationMethod.BROWSER -> "browser"
+                            ReauthenticationMethod.FLOW -> "flow"
+                            ReauthenticationMethod.UNAVAILABLE -> "unavailable"
+                        }
+                    result.success(method)
                 }
                 "verifyAttribute" -> {
                     // Mirrors the two native overloads: a payload continues an execution, otherwise
@@ -207,7 +230,7 @@ class ThunderIDMethodHandler(private val context: Context) {
                 else -> result.notImplemented()
             }
         } catch (e: IAMException) {
-            result.error(e.code.value, e.message, null)
+            result.error(e.code.value, e.message, errorDetails(e))
         } catch (e: CancellationException) {
             // User dismissed the Custom Tab without completing federated sign-in — surfaced as a
             // typed cancellation so the Dart layer can reset state silently instead of erroring.
@@ -216,6 +239,30 @@ class ThunderIDMethodHandler(private val context: Context) {
             result.error("UNKNOWN_ERROR", e.message, null)
         }
     }
+
+    /** The server's error envelope and authentication challenge, for the Dart `IAMException`. */
+    private fun errorDetails(e: IAMException): Map<String, Any?>? {
+        val serverError = e.serverError
+        val challenge = e.authenticationChallenge
+        val anotherAccount = e.isReauthenticationByAnotherAccount
+        if (serverError == null && challenge == null && !anotherAccount) return null
+        return mapOf(
+            "anotherAccount" to anotherAccount,
+            "serverError" to serverError?.let {
+                mapOf(
+                    "code" to it.code,
+                    "message" to encodeServerErrorMessage(it.message),
+                    "description" to encodeServerErrorMessage(it.description),
+                )
+            },
+            "authenticationChallenge" to challenge?.let {
+                mapOf("error" to it.error, "errorDescription" to it.errorDescription, "maxAge" to it.maxAge)
+            },
+        )
+    }
+
+    private fun encodeServerErrorMessage(message: ServerErrorMessage?): Map<String, Any?>? =
+        message?.let { mapOf("key" to it.key, "defaultValue" to it.defaultValue, "params" to it.params) }
 
     private fun buildConfig(args: Map<String, Any?>): ThunderIDConfig {
         val baseUrl = args["baseUrl"] as? String
@@ -292,7 +339,9 @@ class ThunderIDMethodHandler(private val context: Context) {
         val flowType = FlowType.values().firstOrNull { it.value == flowTypeStr } ?: FlowType.AUTHENTICATION
         return EmbeddedFlowRequestConfig(
             applicationId = map["applicationId"] as? String ?: "",
-            flowType = flowType
+            flowType = flowType,
+            reauthentication = map["reauthentication"] == true,
+            maxAge = (map["maxAge"] as? Number)?.toInt(),
         )
     }
 

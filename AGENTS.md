@@ -96,7 +96,8 @@ lib/
       thunderid_channel.dart    MethodChannel bridge (dev.thunderid/sdk)
     models/                     Data models & error types
       thunderid_config.dart     SDK init config
-      thunderid_error.dart      ThunderIDErrorCode enum, IAMException, IAMApiException (+ serverError),
+      thunderid_error.dart      ThunderIDErrorCode enum, IAMException (+ serverError,
+                                authenticationChallenge), IAMApiException, AuthenticationChallenge,
                                 AdministrationFlowError
       user.dart                 OAuth2 user claims
       user_profile.dart         Detailed profile
@@ -143,7 +144,8 @@ lib/
       admin/                    Admin components (UserList, GroupMembers, RoleAssignments, ...)
         internal/               Plumbing shared only by the admin components
       common/                   LanguageSwitcher and the logo/ branding widgets (ThunderIDLogo, AvatarLogo)
-      internal/                 Plumbing shared by more than one widget (account_style.dart)
+      internal/                 Plumbing shared by more than one widget (account_style.dart,
+                                step_up.dart: re-sign-in and one retry on a step-up challenge)
 android/                        Kotlin method channel handler (JVM 17, minSdk 26)
 ios/Classes/                    Swift method channel handler (iOS 16+)
 test/                           Unit tests (flutter_test + mockito); widget tests live under test/widgets/

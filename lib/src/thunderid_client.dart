@@ -372,6 +372,10 @@ class ThunderIDClient {
   ///
   /// The server replaces the whole attribute set, so [payload] must carry every
   /// attribute the profile should keep, not just the edited one.
+  ///
+  /// Changing an `email` or `mobile` attribute needs a recent sign-in. An older one fails with
+  /// [ThunderIDErrorCode.stepUpRequired]; call [reauthenticate] with its
+  /// [IAMException.authenticationChallenge] `maxAge`, then retry.
   Future<UserProfile> updateUserProfile(Map<String, dynamic> payload) async {
     _requireInitialized();
     _refuseOnBackend('updateUserProfile');
@@ -382,20 +386,77 @@ class ThunderIDClient {
   }
 
   /// Changes one of the signed-in user's own credentials via
-  /// `POST /users/me/update-credentials`.
+  /// `POST /users/me/update-credentials`, sending `{name, currentValue, newValue}`.
   ///
-  /// The self-service write path does not verify the account's existing value today, so this
-  /// call collects only the new value, matching the Android/iOS/React/Vue SDKs.
+  /// When the user holds the credential, the server checks [currentValue] against it: a missing
+  /// value fails with server code `USR-1047` and a wrong one with `USR-1048` (read
+  /// [IAMException.serverError]). When the user has not set one yet, leave [currentValue] empty;
+  /// the server then asks for a recent sign-in, and an older one fails with
+  /// [ThunderIDErrorCode.stepUpRequired] (server code `AUTH-4011`) and an
+  /// [IAMException.authenticationChallenge] whose `maxAge` says how recent; call [reauthenticate],
+  /// then retry.
+  /// [currentValue] is sent only when it is not empty. Replacing a held credential ends the
+  /// user's sessions and revokes their tokens, so the user signs in again afterwards.
+  ///
+  /// Throws [ThunderIDErrorCode.invalidInput] before any request when [attribute] is blank or
+  /// [newValue] is empty.
   Future<void> updateUserCredentials({
     String attribute = 'password',
+    String? currentValue,
     required String newValue,
   }) async {
     _requireInitialized();
     _refuseOnBackend('updateUserCredentials');
+    if (attribute.trim().isEmpty) {
+      throw const IAMException(ThunderIDErrorCode.invalidInput, 'The credential name is required');
+    }
+    if (newValue.isEmpty) {
+      throw const IAMException(ThunderIDErrorCode.invalidInput, 'The new credential value is required');
+    }
     await _channel.invoke<void>('updateUserCredentials', {
       'attribute': attribute,
+      if (currentValue != null && currentValue.isNotEmpty) 'currentValue': currentValue,
       'newValue': newValue,
     });
+  }
+
+  /// Signs the signed-in user in again so the session meets a [ThunderIDErrorCode.stepUpRequired]
+  /// challenge. Retry the refused call afterwards.
+  ///
+  /// The native SDK runs a sign-in in the system browser with `max_age` set to [maxAge] (or
+  /// `prompt=login` when it is `null`) and `id_token_hint`, checks that the new ID token's
+  /// subject is the signed-in user, and only then replaces the session's tokens. A sign-in that
+  /// fails, is canceled or returns another user throws and leaves the session as it was. It
+  /// never refreshes the token instead, since a refreshed token keeps the original sign-in time.
+  ///
+  /// Redirect mode only: [reauthenticationMethod] says when to run the sign-in flow instead. When
+  /// sign-in runs on a backend, it throws [ThunderIDErrorCode.operationNotSupported]. Returns the
+  /// signed-in user.
+  Future<User> reauthenticate({int? maxAge}) async {
+    return _reauthenticate(maxAge);
+  }
+
+  /// How the signed-in user signs in again after [ThunderIDErrorCode.stepUpRequired]: in the browser
+  /// with [reauthenticate] for a redirect session, by running the sign-in flow again with
+  /// `EmbeddedFlowRequestConfig.reauthentication` for an app-native one, and not at all when sign-in
+  /// runs on a backend.
+  Future<ReauthenticationMethod> reauthenticationMethod() async {
+    _requireInitialized();
+    if (_backend != null) return ReauthenticationMethod.unavailable;
+    final method = await _channel.invoke<String>('reauthenticationMethod');
+    return ReauthenticationMethod.values.firstWhere(
+      (value) => value.name == method,
+      orElse: () => ReauthenticationMethod.unavailable,
+    );
+  }
+
+  Future<User> _reauthenticate(int? maxAge) async {
+    _requireInitialized();
+    _refuseOnBackend('reauthenticate');
+    final result = await _channel.invokeMap('reauthenticate', {
+      if (maxAge != null) 'maxAge': maxAge,
+    });
+    return User.fromMap(result);
   }
 
   // ── Self user attribute verification ────────────────────────────────────

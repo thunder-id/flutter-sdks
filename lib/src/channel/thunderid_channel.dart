@@ -15,8 +15,7 @@ class ThunderIDChannel {
       final result = await _channel.invokeMethod<T>(method, args);
       return result;
     } on PlatformException catch (e) {
-      final code = ThunderIDErrorCode.fromString(e.code);
-      throw IAMException(code, e.message ?? 'Platform error', cause: e);
+      throw toIAMException(e);
     }
   }
 
@@ -25,8 +24,7 @@ class ThunderIDChannel {
       final result = await _channel.invokeMethod<Map>(method, args);
       return result ?? {};
     } on PlatformException catch (e) {
-      final code = ThunderIDErrorCode.fromString(e.code);
-      throw IAMException(code, e.message ?? 'Platform error', cause: e);
+      throw toIAMException(e);
     }
   }
 
@@ -35,8 +33,28 @@ class ThunderIDChannel {
       final result = await _channel.invokeMethod<List>(method, args);
       return result ?? [];
     } on PlatformException catch (e) {
-      final code = ThunderIDErrorCode.fromString(e.code);
-      throw IAMException(code, e.message ?? 'Platform error', cause: e);
+      throw toIAMException(e);
     }
   }
+}
+
+/// Converts a native SDK error into an [IAMException].
+///
+/// The native SDK sends the server's error envelope and any authentication challenge in
+/// `details` (`serverError`, `authenticationChallenge`). The message is the envelope's readable
+/// text when there is one, and the challenge falls back to the envelope's `AUTH-4011` parameters.
+/// An error with a challenge is [ThunderIDErrorCode.stepUpRequired].
+IAMException toIAMException(PlatformException e) {
+  final details = e.details;
+  final serverError = details is Map ? ServerError.fromMap(details['serverError']) : null;
+  final challenge = (details is Map ? AuthenticationChallenge.fromMap(details['authenticationChallenge']) : null) ??
+      AuthenticationChallenge.resolve(serverError: serverError);
+  return IAMException(
+    challenge != null ? ThunderIDErrorCode.stepUpRequired : ThunderIDErrorCode.fromString(e.code),
+    serverError?.readableMessage ?? e.message ?? 'Platform error',
+    cause: e,
+    serverError: serverError,
+    authenticationChallenge: challenge,
+    isReauthenticationByAnotherAccount: details is Map && details['anotherAccount'] == true,
+  );
 }

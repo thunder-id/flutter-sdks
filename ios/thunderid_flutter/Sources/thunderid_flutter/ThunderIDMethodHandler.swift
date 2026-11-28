@@ -140,9 +140,27 @@ final class ThunderIDMethodHandler {
 
             case "updateUserCredentials":
                 let attribute = args["attribute"] as? String ?? "password"
+                let currentValue = (args["currentValue"] as? String).flatMap { $0.isEmpty ? nil : $0 }
                 let newValue = args["newValue"] as? String ?? ""
-                try await client.updateUserCredentials(attribute: attribute, newValue: newValue)
+                try await client.updateUserCredentials(
+                    attribute: attribute,
+                    currentValue: currentValue,
+                    newValue: newValue
+                )
                 result(nil)
+
+            case "reauthenticate":
+                // The native SDK checks the new ID token's subject before it replaces the session.
+                let maxAge = (args["maxAge"] as? NSNumber)?.intValue
+                let user = try await client.reauthenticate(maxAge: maxAge)
+                result(encodeUser(user))
+
+            case "reauthenticationMethod":
+                switch client.reauthenticationMethod() {
+                case .browser: result("browser")
+                case .flow: result("flow")
+                case .unavailable: result("unavailable")
+                }
 
             case "verifyAttribute":
                 // Mirrors the two native calls: a payload continues an execution, otherwise the
@@ -168,10 +186,39 @@ final class ThunderIDMethodHandler {
                 result(FlutterMethodNotImplemented)
             }
         } catch let error as ThunderIDError {
-            result(FlutterError(code: error.code.rawValue, message: error.message, details: nil))
+            result(FlutterError(code: error.code.rawValue, message: error.message, details: errorDetails(error)))
         } catch {
             result(FlutterError(code: "UNKNOWN_ERROR", message: error.localizedDescription, details: nil))
         }
+    }
+
+    /// The server's error envelope and authentication challenge, for the Dart `IAMException`.
+    private func errorDetails(_ error: ThunderIDError) -> [String: Any]? {
+        var details: [String: Any] = [:]
+        if let serverError = error.serverError {
+            var envelope: [String: Any] = ["code": serverError.code]
+            if let message = serverError.message { envelope["message"] = encodeServerErrorMessage(message) }
+            if let description = serverError.description {
+                envelope["description"] = encodeServerErrorMessage(description)
+            }
+            details["serverError"] = envelope
+        }
+        if let challenge = error.authenticationChallenge {
+            var encoded: [String: Any] = ["error": challenge.error]
+            if let errorDescription = challenge.errorDescription { encoded["errorDescription"] = errorDescription }
+            if let maxAge = challenge.maxAge { encoded["maxAge"] = maxAge }
+            details["authenticationChallenge"] = encoded
+        }
+        if error.isReauthenticationByAnotherAccount { details["anotherAccount"] = true }
+        return details.isEmpty ? nil : details
+    }
+
+    private func encodeServerErrorMessage(_ message: ServerErrorMessage) -> [String: Any] {
+        var encoded: [String: Any] = [:]
+        if let key = message.key { encoded["key"] = key }
+        if let defaultValue = message.defaultValue { encoded["defaultValue"] = defaultValue }
+        if let params = message.params { encoded["params"] = params }
+        return encoded
     }
 
     // MARK: - Federated auth (TRIGGER actions)
@@ -236,7 +283,7 @@ final class ThunderIDMethodHandler {
         } catch is FederatedAuthSession.CancelledError {
             result(FlutterError(code: "FEDERATED_AUTH_CANCELLED", message: "User cancelled federated sign-in", details: nil))
         } catch let error as ThunderIDError {
-            result(FlutterError(code: error.code.rawValue, message: error.message, details: nil))
+            result(FlutterError(code: error.code.rawValue, message: error.message, details: errorDetails(error)))
         } catch {
             result(FlutterError(code: "UNKNOWN_ERROR", message: error.localizedDescription, details: nil))
         }
@@ -358,7 +405,9 @@ final class ThunderIDMethodHandler {
         let flowType = FlowType(rawValue: flowTypeStr) ?? .authentication
         return EmbeddedFlowRequestConfig(
             applicationId: map["applicationId"] as? String ?? "",
-            flowType: flowType
+            flowType: flowType,
+            reauthentication: map["reauthentication"] as? Bool ?? false,
+            maxAge: (map["maxAge"] as? NSNumber)?.intValue
         )
     }
 

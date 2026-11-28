@@ -90,12 +90,13 @@ decides every request.
 ## Set up ThunderID
 
 1. Sign in to the ThunderID Console and create a **Mobile** application.
-2. Copy its application ID.
+2. Copy its application ID and OAuth client ID, and add the
+   `urn:ietf:params:oauth:grant-type:token-exchange` grant type to the application: app-native sign-in
+   exchanges the completed flow's assertion for the access token.
 3. Simulators and emulators cannot pass platform attestation (Apple App Attest or Play Integrity), so
    enable attestation **dev mode** on the application while you test locally. Never enable it on a real
    tenant.
-4. Optional: to run the system browser and redirect callback checks, give the application an OAuth
-   client ID and register the redirect URI from `.env` (`dev.thunderid.playground://callback` by
+4. Optional: to run the system browser and redirect callback checks, register the redirect URI from `.env` (`dev.thunderid.playground://callback` by
    default). These checks build the authorize URL and confirm forged callbacks are rejected; the app
    does not register the URL scheme, so it does not complete a full browser round trip.
 
@@ -109,7 +110,7 @@ cp .env.example .env
 |---|---|
 | `THUNDERID_BASE_URL` | ThunderID server URL. Use `https://localhost:8090` for the iOS simulator and `https://10.0.2.2:8090` for the Android emulator. |
 | `THUNDERID_APP_ID` | Application ID for app-native sign-in and sign-up. |
-| `THUNDERID_CLIENT_ID` | Optional OAuth client ID for redirect-based sign-in. |
+| `THUNDERID_CLIENT_ID` | OAuth client ID, for app-native and redirect-based sign-in. |
 | `THUNDERID_AFTER_SIGN_IN_URL` / `THUNDERID_AFTER_SIGN_OUT_URL` | Redirect URIs used with `THUNDERID_CLIENT_ID`. |
 | `THUNDERID_ATTESTATION_ENABLED` | `true` to send an attestation token. Keep `false` on simulators and emulators. |
 | `THUNDERID_CLOUD_PROJECT_NUMBER` | Google Cloud project number, required by Play Integrity when attestation is on. |

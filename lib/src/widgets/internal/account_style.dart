@@ -171,6 +171,15 @@ class ThunderAccountField extends StatefulWidget {
   final ValueChanged<String> onChanged;
   final TextEditingController? controller;
 
+  /// Shown inside the field while it is focused and empty.
+  final String? placeholder;
+
+  /// Shown under the field when there is no [errorText].
+  final String? helperText;
+
+  /// Shown under the field, in the error color.
+  final String? errorText;
+
   const ThunderAccountField({
     super.key,
     required this.label,
@@ -178,6 +187,9 @@ class ThunderAccountField extends StatefulWidget {
     required this.onChanged,
     this.obscureText = false,
     this.controller,
+    this.placeholder,
+    this.helperText,
+    this.errorText,
   });
 
   @override
@@ -196,11 +208,11 @@ class _ThunderAccountFieldState extends State<ThunderAccountField> {
     // a gap in the border stroke behind a floated label: the border here is this Container's
     // own, and the TextField's decoration draws no border of its own (InputBorder.none), so
     // floating never touches it.
-    return Semantics(
+    final field = Semantics(
       identifier: widget.identifier,
       child: Container(
         decoration: BoxDecoration(
-          border: Border.all(color: colors.inputBorder),
+          border: Border.all(color: widget.errorText != null ? colors.error : colors.inputBorder),
           borderRadius: BorderRadius.circular(8),
         ),
         child: TextField(
@@ -211,6 +223,8 @@ class _ThunderAccountFieldState extends State<ThunderAccountField> {
           style: TextStyle(fontSize: 16, color: colors.text),
           decoration: InputDecoration(
             labelText: widget.label,
+            hintText: widget.placeholder,
+            hintStyle: TextStyle(fontSize: 16, color: colors.textSecondary),
             labelStyle: TextStyle(fontSize: 16, color: colors.textSecondary),
             floatingLabelStyle: TextStyle(fontSize: 12, color: colors.textSecondary),
             floatingLabelBehavior: FloatingLabelBehavior.auto,
@@ -236,6 +250,24 @@ class _ThunderAccountFieldState extends State<ThunderAccountField> {
           ),
         ),
       ),
+    );
+    final note = widget.errorText ?? widget.helperText;
+    if (note == null) return field;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        field,
+        const SizedBox(height: 6),
+        Semantics(
+          identifier: widget.errorText != null ? '${widget.identifier}-error' : '${widget.identifier}-hint',
+          liveRegion: widget.errorText != null,
+          child: Text(
+            note,
+            key: Key(widget.errorText != null ? '${widget.identifier}-error' : '${widget.identifier}-hint'),
+            style: TextStyle(fontSize: 13, color: widget.errorText != null ? colors.error : colors.textSecondary),
+          ),
+        ),
+      ],
     );
   }
 }

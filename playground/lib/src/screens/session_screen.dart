@@ -377,13 +377,16 @@ class _SessionScreenState extends State<SessionScreen> {
     );
   }
 
-  /// Algorithm from the JWT header, decoded locally (the SDK only decodes the payload).
+  /// Algorithm and type from the JWT header, decoded locally (the SDK only decodes the payload).
   String _jwtMeta(String token) {
     final parts = token.split('.');
     if (parts.length != 3) return 'opaque';
     try {
       final header = jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(parts.first))));
-      if (header is Map && header['alg'] is String) return 'JWT · ${header['alg']}';
+      if (header is Map && header['alg'] is String) {
+        final typ = header['typ'] is String ? ' · typ ${header['typ']}' : '';
+        return 'JWT · ${header['alg']}$typ';
+      }
     } catch (_) {
       // Not a JWT header.
     }
@@ -613,12 +616,17 @@ class _TokenCard extends StatelessWidget {
           Row(
             children: [
               Expanded(child: Text(name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500))),
-              Text(
-                meta,
-                style: PlaygroundTheme.monoStyle(
-                  size: 11.5,
-                  color: meta == 'unavailable' ? PlaygroundColors.warnSoft : PlaygroundColors.white(0.5),
-                  weight: FontWeight.w500,
+              Flexible(
+                child: Text(
+                  meta,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.end,
+                  style: PlaygroundTheme.monoStyle(
+                    size: 11.5,
+                    color: meta == 'unavailable' ? PlaygroundColors.warnSoft : PlaygroundColors.white(0.5),
+                    weight: FontWeight.w500,
+                  ),
                 ),
               ),
             ],

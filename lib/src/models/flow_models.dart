@@ -62,14 +62,25 @@ class EmbeddedFlowRequestConfig {
   final String applicationId;
   final FlowType flowType;
 
+  /// Runs an authentication flow to sign the signed-in user in again: the server applies [maxAge],
+  /// and the native SDK replaces the session only when the same user signs in.
+  final bool reauthentication;
+
+  /// With [reauthentication]: how recent, in seconds, the sign-in must be; `0` (always ask) when `null`.
+  final int? maxAge;
+
   const EmbeddedFlowRequestConfig({
     required this.applicationId,
     this.flowType = FlowType.authentication,
+    this.reauthentication = false,
+    this.maxAge,
   });
 
   Map<String, dynamic> toMap() => {
         'applicationId': applicationId,
         'flowType': flowType.value,
+        if (reauthentication) 'reauthentication': true,
+        if (maxAge != null) 'maxAge': maxAge,
       };
 }
 

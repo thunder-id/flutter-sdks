@@ -1,0 +1,17 @@
+appId: dev.thunderid.Quickstart
+---
+# Backs out through the section screen, then the manage account hub, to the home tab, and signs
+# out. Both back controls are chevron-only (no label), so they're targeted by id rather than text -
+# see _BackChevron in the sample for why one shared id is unambiguous here.
+- tapOn:
+    id: "thunderid-nav-back"
+- tapOn:
+    id: "thunderid-nav-back"
+- scrollUntilVisible:
+    element: "Sign out"
+    direction: DOWN
+    timeout: 20000
+- tapOn: "Sign out"
+- extendedWaitUntil:
+    visible: "Get started"
+    timeout: 20000
